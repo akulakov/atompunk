@@ -106,21 +106,15 @@ Objects = ObjectsClass()
 
 class ID(Enum):
     cap = auto()
+    pistol = auto()
+    player = auto()
 
-class Player:
-    caps = 0
-
-    def __init__(self, name, is_ai, color):
-        self.name, self.is_ai = name, is_ai
-        self.is_human = not is_ai
-
-    def __repr__(self):
-        return f'<P: {self.name}>'
 
 class Type(Enum):
     door1 = auto()
     container = auto()
     blocking = auto()
+    player = auto()
 
 class Blocks:
     """All game tiles."""
@@ -239,17 +233,17 @@ def get_mouse_pos():
 def board_setup():
     Boards.b_1 = Board(Loc(0,0), '1')
     Boards.b_1.board_1()
-    Boards.b_2 = Board(Loc(1,0), '2')
-    Boards.b_2.board_2()
+    # Boards.b_2 = Board(Loc(1,0), '2')
+    # Boards.b_2.board_2()
 
-    Boards.b_3 = Board(Loc(0,1), '3')
-    Boards.b_3.board_3()
-    Boards.b_4 = Board(Loc(1,1), '4')
-    Boards.b_4.board_4()
+    # Boards.b_3 = Board(Loc(0,1), '3')
+    # Boards.b_3.board_3()
+    # Boards.b_4 = Board(Loc(1,1), '4')
+    # Boards.b_4.board_4()
 
     board_grid[:] = [
         ['1', '2', None],
-        ['3', '4', None],
+        # ['3', '4', None],
     ]
     Misc.B = Boards.b_1
 
@@ -258,14 +252,15 @@ def board_setup():
 def stats(castle=None, battle=False):
     pl = Misc.player
     if not pl: return
+    move_str = ''
     if battle and Misc.current_unit:
         u = Misc.current_unit
         move, n_moves = u.cur_move, u.n_moves
-    res = pl.resources
+        move_str = f' | Move {move}/{n_moves}'
     s=''
-    st = s + f' | Move {move}/{n_moves} | {Misc.B._map}'
+    st = s + f'{move_str} | {Misc.B._map}'
     x = len(st)+2
-    puts2(1,0,blt_esc(st))
+    puts2(1, 0, blt_esc(st))
     y = 1
     refresh()
 
@@ -326,12 +321,6 @@ class Loc:
 
     def mod_u(self, n=1):
         return self.mod(0, -n)
-
-class BlockingItem(Item):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.type = Type.blocking
-
 
 def rand_color(r, g, b):
     r = (r,r+1) if isinstance(r,int) else r
@@ -486,50 +475,6 @@ class Board:
 
     def board_1(self):
         self.load_map('1')
-        Hero(self.specials[1], '1', name=hero_names[ID.hero1], char=Blocks.hero1_l, id=ID.hero1, player=Misc.player,
-             army=[Archer(n=12), Pikeman(n=11), Griffin(n=13), Pikeman(n=14), Pikeman(n=15)])
-
-        # Hero(self.specials[5], '1', name=hero_names[ID.hero3], char=Blocks.hero1_r, id=ID.hero3, player=Misc.player,
-             # army=[Pikeman(n=3), Pikeman(n=4), Cavalier(n=2)])
-
-        # Hero(self.specials[4], '1', name=hero_names[ID.hero2], char=Blocks.hero1_l, id=ID.hero2, player=Misc.blue_player,
-        #      army=[Pikeman(n=1), Pikeman(n=1)])
-
-        # Hero(self.specials[4].mod_r(2), '1', name=hero_names[ID.hero4], char=Blocks.hero1_l, id=ID.hero4, player=Misc.blue_player,
-        #      army=[Pikeman(n=2), Peasant(n=5)])
-
-        ResourceItem(Blocks.gold, 'gold', self.specials[6], self._map, id=ID.gold, n=100, color='yellow')
-        Sawmill(self.specials[7], '1', player=Misc.player)
-
-        Castle('Castle 1', self.specials[2], self._map, id=ID.castle1, player=Misc.blue_player, town_type=CastleTownType,
-              army=[])
-        Castle('Rampart Castle', self.specials[3], self._map, id=ID.castle2, player=Misc.blue_player, army=[],
-               town_type=RampartTownType)
-
-        IndependentArmy(Loc(11,10), '1', army=[Peasant(n=5)])
-        IndependentArmy(Loc(11,12), '1', army=[Pikeman(n=5), Peasant(n=9)])
-
-    def board_2(self):
-        self.load_map('2')
-        Castle('Castle 3', self.specials[1], self._map, id=ID.castle3, player=Misc.blue_player, army=[Peasant(n=1)],
-               town_type=CastleTownType)
-
-    def board_3(self):
-        self.load_map('3')
-        Castle('Castle 4', self.specials[1], self._map, id=ID.castle4, player=Misc.blue_player, army=[Peasant(n=5)],
-               town_type=CastleTownType)
-
-    def board_4(self):
-        self.load_map('4')
-        Castle('Castle 5', self.specials[1], self._map, id=ID.castle5, player=Misc.blue_player, army=[Pikeman(n=8)],
-               town_type=CastleTownType)
-
-    def board_siege(self):
-        self.load_map('siege')
-        sp = self.specials
-        RaisedPlatform(Blocks.button_platform, '', sp[3], self._map)
-        Gate(sp[8], name='Gate', board_map=self._map)
-        Gate(sp[9], name='Gate', board_map=self._map)
 
     def screen_loc_to_map(self, loc):
         x,y=loc
@@ -553,14 +498,13 @@ class Board:
                     x+=1
                 if isinstance(a, str):
                     puts(x,y,a)
-                    continue
-                if isinstance(a, ID):
-                    a = Objects.get_by_id(a)
-                puts(x,y,a)
+                elif isinstance(a, ID):
+                    a = Objects[a]
+                    puts(x,y,a)
 
         for y,x,txt in self.labels:
             puts(x,y,txt)
-        stats(castle, battle=battle)
+        stats()
         for n, msg in enumerate(Misc.status):
             puts2(1, 2+n, msg)
             Misc.status = []
@@ -607,22 +551,19 @@ class Boards:
     def get_by_loc(loc):
         return board_grid[loc.y][loc.x]
 
-class BeingItemCastleBase:
+class BeingItemBase:
     is_player = 0
-    is_hero = 0
+    player = None
     state = 0
     color = None
     _str = None
-    castle = None
-    player = None
     id = None
-    hero = None
 
     def __init__(self, char, name, loc=None, board_map=None, put=True, id=None, type=None, color=None, n=0):
         self.char, self.name, self.loc, self.board_map, self.id, self.type, self.color, self.n = \
                 char, name, loc, board_map, id, type, color, n
         if id:
-            Objects.set_by_id(id, self)
+            Objects[id] = self
         if board_map and put:
             self.B.put(self)
 
@@ -660,26 +601,13 @@ class BeingItemCastleBase:
         self.board_map = to_B._map
         return to_B
 
-    def set_player(self, player):
-        self.player = player
-        if player:
-            self.color = player.color
-            if self in player_buildings:
-                player_buildings.remove(self)
-            if self.type==Type.building:
-                player.resources[self.resource] += self.available
-                self.available = 0
-                (ai_buildings if self.player.is_ai else player_buildings).append(self)
-
     @property
     def B(self):
-        if self.castle:
-            return castle_boards[self.castle.name]
         if self.board_map:
             return getattr(Boards, 'b_'+self.board_map)
 
 
-class Item(BeingItemCastleBase):
+class Item(BeingItemBase):
     board_map = None
 
     def __init__(self, *args, **kwargs):
@@ -702,319 +630,17 @@ class Item(BeingItemCastleBase):
             self.loc = new
             self.B.put(self)
 
-class ResourceItem(Item):
-    n = 0
+class BlockingItem(Item):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.type = Type.blocking
 
-class Arrow(Item):
-    char = Blocks.arrow_l
-
-class RaisedPlatform(Item):
-    char = Blocks.button_platform
-    id = ID.raised_platform
-
-class TownType:
-    building_types = None
-
-class ArmyMixin:
+class PartyMixin:
     def total_strength(self):
-        return sum(u.n*u.health for u in self.live_army())
+        return sum(u.health for u in self.live_party())
 
-    def army_is_dead(self):
-        return all(not u or u.dead for u in self.army)
-
-    def live_army(self):
-        return list(u for u in filter(None, self.army) if u.alive)
-
-class Castle(ArmyMixin, BeingItemCastleBase):
-    weekly_income = 250
-    current_hero = None
-    type = Type.castle
-    town_type = None
-
-    def __init__(self, *args, player=None, army=None, town_type=None, **kwargs):
-        super().__init__(Blocks.door, *args, **kwargs)
-        self.army = pad_none(army or [], 6)
-        self.town_type = town_type
-        self.set_player(player)
-        if player:
-            player._castles.append(self.id)
-        castles.append(self.id)
-        self.type = Type.castle
-        board = Board(None, 'town_ui')
-        castle_boards[self.name] = board
-        # this should happen after board is in `castle_boards` because buildings will get the board from there
-        board.load_map('town_ui')
-
-    def __repr__(self):
-        return f'<C: {self.name}>'
-
-    def is_ai(self):
-        return not self.player or self.player.is_ai
-
-    def ai_cast_spell(self, *args, **kwargs):
-        pass
-
-    def handle_day(self):
-        if self.player:
-            self.player.resources[ID.gold] += self.weekly_income
-        if Misc.day==1:
-            for b in self.board.buildings:
-                b.available += b.growth
-
-    @property
-    def board(self):
-        return castle_boards[self.name]
-
-    def town_ui(self, hero=None):
-        self.current_hero = hero
-        while 1:
-            self.board.draw(castle=self)
-            # stats(self)
-            k = get_and_parse_key()
-            if k in ('q', 'ESCAPE'):
-                break
-            elif k=='r':
-                self.recruit_ui()
-            elif k=='R':
-                self.recruit_all()
-            elif k=='H':
-                self.recruit_hero()
-            elif k=='t':
-                self.troops_ui()
-            elif k=='b':
-                BuildUI().go(self)
-
-    def recruit_hero(self):
-        if self.B.found_type_at(Type.hero, self.loc):
-            h = self.current_hero
-            h.talk(h, 'Cannot recruit a new hero: there is already a hero in this castle!')
-            return
-
-        lst = []
-        for id, n in hero_names.items():
-            if not Objects.get_by_id(id):
-                lst.append((id, n))
-
-        if not lst:
-            Misc.hero.talk(Misc.hero, 'No more heroes for hire.')
-            return
-        x, y = 5, 1
-        ascii_letters = string.ascii_letters
-
-        new = []
-        for n, (id, name) in enumerate(lst):
-            new.append(f' {ascii_letters[n]}) {name}')
-
-        w = max(len(l) for l in new)
-        blt.clear_area(x, y, w+2, len(new))
-        for n, l in enumerate(new):
-            puts(x, y+n, l)
-
-        refresh()
-        ch = get_and_parse_key()
-        if ch and ch in ascii_letters:
-            try:
-                id, name = lst[string.ascii_letters.index(ch)]
-            except IndexError:
-                return
-
-            h = Hero(self.loc, self.B._map, name=name, char=Blocks.hero1_l, id=id, player=self.player)
-            (ai_heroes if self.player.is_ai else player_heroes).append(h)
-
-    def troops_ui(self):
-        i = 0
-        self.board.draw(castle=self)
-
-        while 1:
-            stats(self)
-            blt.clear_area(5,5,60,10)
-            h = self.current_hero
-
-            puts(9 + i*3, 6, Blocks.cursor)
-
-            x = y = 8
-            for a in self.army:
-                puts(x+1 if a else x,
-                      y,
-                      a or blt_esc('[ ]')
-                     )
-                x+=3
-            y+=2
-
-            x = 8
-            for a in h.army:
-                puts(x+1 if a else x,
-                      y,
-                      a or blt_esc('[ ]'))
-                x+=3
-            refresh()
-            k = get_and_parse_key()
-            if k in ('q', 'ESCAPE'):
-                break
-            elif k == 'DOWN' and self.army[i]:
-                if blt.state(blt.TK_SHIFT):
-                    self.army = self.merge_into_army(self.army, h.army)
-                else:
-                    self.army[i] = self.merge_into_army([self.army[i]], h.army)
-            elif k == 'UP' and h.army[i]:
-                if blt.state(blt.TK_SHIFT):
-                    h.army = self.merge_into_army(h.army, self.army)
-                else:
-                    x = self.merge_into_army([h.army[i]], self.army)
-                    h.army[i] = x
-
-            elif k == 'LEFT':
-                i-=1
-                if i<0: i = 5
-            elif k == 'RIGHT':
-                i+=1
-                if i>5: i = 0
-        h.set_army_ownership()
-
-    def merge_into_army(self, A, B):
-        """Merge army A into B."""
-        remains = []
-        for a in filter(None, A):
-            same_type = first([b for b in B if b and b.type==a.type])
-            empty = first([n for n, b in enumerate(B) if not b])
-            if same_type:
-                same_type.n+= a.n
-            elif empty is not None:
-                B[empty] = a
-            else:
-                remains.append(a)
-
-        if len(A)==1:
-            return first(remains)
-        else:
-            return pad_none(remains, 6)
-
-
-    def recruit_all(self):
-        hero = self.current_hero
-        for b in self.board.buildings:
-            recruited = 0
-            for _ in range(b.available):
-                if not b.available or self.player.resources[ID.gold] < b.units.cost or not hero.can_merge(b.units.type):
-                    break
-                b.available-=1
-                recruited+=1
-                self.player.resources[ID.gold] -= b.units.cost
-            self.merge_into_army([b.units(n=recruited)], hero.army)
-        hero.set_army_ownership()
-
-    def recruit_ui(self):
-        recruited = defaultdict(int)
-        # recruited = {}
-        curs = 0
-        self.board.draw(castle=self)
-        B = self.board
-        while 1:
-            lst = [('', 'Unit', 'Available', 'Recruited')]
-            for n, b in enumerate(B.buildings):
-                x = Blocks.cursor if n==curs else ''
-                lst.append((x, b.units.__name__, b.available, recruited[n]))
-
-            x = Blocks.cursor if curs==len(self.board.buildings) else ''
-            lst.append((x, 'ACCEPT', '', ''))
-            blt.clear_area(5,5,60, len(B.buildings)+5)
-            for n, (a,b,c,d) in enumerate(lst):
-                puts(6, 6+n, a)
-                puts(9, 6+n, str(b))
-                puts(9+15, 6+n, str(c))
-                puts(9+15+12, 6+n, str(d))
-            refresh()
-
-            k = get_and_parse_key()
-            bld = getitem(B.buildings, curs)
-            gold = self.player.resources[ID.gold]
-            unit_cost = bld.units.cost if bld else 0
-
-            if k in ('q', 'ESCAPE'):
-                break
-
-            elif k == 'DOWN':
-                curs+=1
-            elif k == 'UP':
-                curs-=1
-
-            elif not bld and k=='ENTER':
-                for bld_n, n in recruited.items():
-                    bld = B.buildings[bld_n]
-                    if n:
-                        for m, slot in enumerate(self.army):
-                            if not slot:
-                                self.army[m] = bld.units(n=n)
-                                recruited[bld_n] = 0
-                                break
-                            elif slot.type==type:
-                                slot.n+=n
-                                recruited[bld_n] = 0
-                                break
-
-                # silently revert recruits who didn't fit in the slots
-                for bld_n, n in recruited.items():
-                    bld = B.buildings[bld_n]
-                    if n:
-                        bld.available += n
-                        gold += bld.units.cost * n
-                self.player.resources[ID.gold] = gold
-                break
-
-            elif k == 'LEFT' and bld and recruited[curs]:
-                bld.available += 1
-                recruited[curs] -= 1
-                gold += unit_cost
-
-            elif k == 'RIGHT' and bld and bld.available and unit_cost<=gold:
-                bld.available -= 1
-                recruited[curs] += 1
-                gold -= unit_cost
-
-            if curs<0:
-                curs = len(B.buildings)
-            if curs>len(B.buildings):
-                curs = 0
-
-
-class BuildUI:
-    def go(self, castle):
-        existing = [b.__class__ for b in castle.board.buildings]
-        available = [b for b in castle.town_type.building_types if b not in existing]
-        pl = castle.player
-        new = []
-        for b in available:
-            req = ', '.join(f'{id.name}:{amt}' for id,amt in b.cost.items())
-            new.append(f'{b.__name__}  {req}')
-
-        if not available:
-            Misc.hero.talk(Misc.hero, 'No buildings may be built.')
-            return
-        x, y = 5, 1
-        ascii_letters = string.ascii_letters
-
-        lst = []
-        for n, b in enumerate(new):
-            lst.append(f' {ascii_letters[n]}) {b}')
-        w = max(len(l) for l in lst)
-        blt.clear_area(x, y, w+2, len(lst))
-        for n, l in enumerate(lst):
-            puts(x, y+n, l)
-
-        refresh()
-        ch = get_and_parse_key()
-        if ch and ch in ascii_letters:
-            try:
-                b = available[string.ascii_letters.index(ch)]
-            except IndexError:
-                return
-            for id,amt in b.cost.items():
-                if amt > pl.resources[id]:
-                    Misc.hero.talk(Misc.hero, 'Not enough resources for this building')
-                    return
-            loc = castle.board.random_empty()
-            bld = b(loc, 'town_ui', castle)
-            castle.board.buildings.append(bld)
+    def live_party(self):
+        return list(u for u in filter(None, self.party) if u.alive)
 
 
 class BattleUI:
@@ -1025,9 +651,9 @@ class BattleUI:
         a_str = a.total_strength()
         b_str = b.total_strength()
         winner, loser, hp = (a,b,b_str) if a_str>b_str else (b,a,a_str)
-        if winner.is_hero:
+        if winner.is_player:
             winner.xp += loser.total_strength()//2
-        for u in winner.live_army():
+        for u in winner.live_party():
             if u.total_health < hp:
                 u.n=0
                 hp-=u.total_health
@@ -1035,94 +661,46 @@ class BattleUI:
                 n, health = divmod(hp, u.max_health)
                 u.health = health
                 u.n = n+1
-        loser.army = pad_none([], 6)
+        loser.party = pad_none([], 6)
 
     def go(self, a, b):
         self._go(a,b)
-        a.army = pad_none(a.live_army(), 6)
-        b.army = pad_none(b.live_army(), 6)
         Misc.B = self.B
 
     def _go(self, a, b):
-        if a.is_hero: a.reset_mana()
-        if b.is_hero: b.reset_mana()
         a._strength = a.total_strength()
         b._strength = b.total_strength()
         B = Misc.B = Boards.b_battle = Board(None, 'battle')
-        if b.type == Type.castle:
-            B.board_siege()
-        else:
-            B.load_map('battle')
+        B.load_map('battle')
 
         loc = B.specials[1]
-        for u in a.live_army():
+        for u in a.live_party():
             B.put(u, loc)
             loc = loc.mod_d(2)
         loc = B.specials[2]
-        for u in b.live_army():
+        for u in b.live_party():
             B.put(u, loc)
             loc = loc.mod_d(2)
 
-        if b.type != Type.castle:
-            B.random_rocks(20)
-
+        B.random_rocks(20)
         B.draw(battle=1)
         while 1:
-            self.cast_spell(B, a, b)
             B.draw(battle=1)
-            for u in a.live_army():
+            for u in a.live_party():
                 rv = self.handle_unit_turn(B, a, b, u)
                 if rv==AUTO_BATTLE:
                     break
-            self.handle_modifiers_turn(a)
             if self.check_for_win(a,b):
                 break
-            self.cast_spell(B, b, a)
-            for u in b.live_army():
+            for u in b.live_party():
                 rv = self.handle_unit_turn(B, b, a, u)
                 if rv==AUTO_BATTLE:
                     break
-            self.handle_modifiers_turn(b)
             if self.check_for_win(a,b):
                 break
 
-    def handle_modifiers_turn(self, hero):
-        """Time-out modifiers."""
-        for u in hero.live_army():
-            rm = []
-            for k, mod in u.modifiers.items():
-                if mod[0] <= 0:
-                    rm.append(k)
-                else:
-                    mod[0] -= 1
-            for k in rm:
-                del u.modifiers[k]
-
-    def cast_spell(self, B, a, b):
-        if a.is_ai():
-            a.ai_cast_spell(B, b.live_army())
-        else:
-            a.cast_spell(B)
-
-    def check_for_win(self, a, b):
-        for hero, other in [(a,b),(b,a)]:
-            if hero.army_is_dead():
-                x = hero if hero.is_hero else other
-                x.talk(x, f'{other} wins, gaining {hero._strength}XP!')     # `hero` may be a castle here
-                if hero.is_hero:
-                    # we don't remove if it's a castle
-                    self.B.remove(hero)
-                    hero.alive = 0
-
-                if not hero.player or hero.player.is_ai:
-                    other.add_xp(hero._strength)
-                for u in other.live_army():
-                    u.modifiers = defaultdict(lambda:[1,1])
-                return True
-
     def handle_unit_turn(self, B, a, b, unit):
         h,u = a, unit
-        hh = a if (a.player and not a.player.is_ai) else b
         Misc.current_unit = u   # for stats()
         while 1:
             if not u.alive:
@@ -1143,7 +721,7 @@ class BattleUI:
                     self.auto_battle(a, b)
                     return AUTO_BATTLE
             else:
-                tgt = u.closest(hh.live_army())
+                tgt = u.closest(b.live_party())
 
                 if tgt:
                     u.color = 'lighter blue'
@@ -1158,7 +736,6 @@ class BattleUI:
                     else:
                         return
 
-                    # u.attack(tgt)
                     B.draw(battle=1)
                     if u.cur_move==0:
                         u.cur_move = u.speed
@@ -1171,43 +748,38 @@ class LoadBoard:
     def __init__(self, new, b_new):
         self.new, self.b_new = new, b_new
 
-class Being(BeingItemCastleBase):
-    n = None
-    health = 1
+class Being(BeingItemBase):
     health = 1
     max_health = 1
     is_being = 1
     type = None
     char = None
-    speed = None
-    range_weapon_str = None
-    modifiers = None
+    n_moves = None
     path = None
 
-    def __init__(self, loc=None, board_map=None, put=True, id=None, name=None, state=0, n=1, char='?',
+    def __init__(self, loc=None, board_map=None, put=True, id=None, name=None, state=0, char='?',
                  color=None):
-        self.id, self.loc, self.board_map, self._name, self.state, self.n, self.color  = id, loc, board_map, name, state, n, color
+        self.id, self.loc, self.board_map, self._name, self.state, self.color  = \
+                id, loc, board_map, name, state, color
         self.char = self.char or char
         self.inv = defaultdict(int)
-        self.cur_move = self.speed
+        self.cur_move = self.n_moves
         if id:
-            Objects.set_by_id(id, self)
+            Objects[id]= self
         if board_map and put:
             self.B.put(self)
         self.max_health = self.health
-        self.modifiers = defaultdict(lambda:[1,1])
         self.path = {}
 
-
     def __str__(self):
-        return super().__str__() if self.n>0 else Blocks.rubbish
+        return super().__str__() if self.health>0 else Blocks.rubbish
 
     @property
     def name(self):
         return self._name or self.__class__.__name__
 
     def talk(self, being, dialog=None, yesno=False, resp=False):
-        """Messages, dialogs, yes/no, prompt for responce, multiple choice replies."""
+        """Messages, dialogs, yes/no, prompt for response, multiple choice replies."""
         if isinstance(being, int):
             being = Objects.get(being)
         loc = being.loc
@@ -1317,30 +889,11 @@ class Being(BeingItemCastleBase):
                     return None
 
                 self.handle_directional_turn(dir, new)
-                if self.hero != being.hero or (self.is_hero and self.player!=being.player):
+                if self.player != being.player:
                     self.attack(being)
                 if self.cur_move:
                     self.cur_move -= 1
                 return True, True
-
-        if new and B.found_type_at(Type.building, new):
-            b = B[new]
-            b.set_player(self.player)
-
-        if new and B.found_type_at(Type.castle, new):
-            cas = Objects.get_by_id(B[new])
-            if cas.player==self.player or not cas.live_army():
-                cas.set_player(self.player)
-                if self.player.is_human:
-                    cas.town_ui(self)
-                else:
-                    # enter town gate
-                    B.remove(self)
-                    self.put(new)
-                    self.cur_move=0
-            else:
-                BattleUI(B).go(self, cas)
-            return None, None
 
         if new and B.is_blocked(new):
             new = None
@@ -1355,26 +908,23 @@ class Being(BeingItemCastleBase):
             refresh()
             if self.cur_move:
                 self.cur_move -= 1
-            if self.is_hero and self.player and not self.player.is_ai:
+            if self.player and not self.player.is_ai:
                 self.handle_player_move(new)
-
             return True, True
         return None, None
 
     def handle_directional_turn(self, dir, loc):
         """Turn char based on which way it's facing."""
-        if isinstance(self, (ArmyUnit, Hero)):
-            name = self.__class__.__name__.lower()
-            if self.is_hero: name = name+'1'
-            if hasattr(Blocks, name+'_r'):
-                to_r = False
-                if loc:
-                    to_r = loc.x>self.loc.x or (loc.x==self.loc.x and loc.y%2==1)
-                to_l = not to_r
-                if dir and dir in 'hyb' or to_l:
-                    self.char = getattr(Blocks, name+'_l')
-                else:
-                    self.char = getattr(Blocks, name+'_r')
+        name = self.__class__.__name__.lower()
+        if hasattr(Blocks, name+'_r'):
+            to_r = False
+            if loc:
+                to_r = loc.x>self.loc.x or (loc.x==self.loc.x and loc.y%2==1)
+            to_l = not to_r
+            if dir and dir in 'hyb' or to_l:
+                self.char = getattr(Blocks, name+'_l')
+            else:
+                self.char = getattr(Blocks, name+'_r')
 
     def handle_player_move(self, new):
         B=self.B
@@ -1389,7 +939,7 @@ class Being(BeingItemCastleBase):
         for x in reversed(items):
             if x.id in pick_up:
                 if self.player:
-                    self.player.resources[x.id] += x.n
+                    pass
                 B.remove(x, new)
 
         names = [o.name for o in B.get_all_obj(new) if o.name and o!=self]
@@ -1399,17 +949,9 @@ class Being(BeingItemCastleBase):
             a = ':' if plural else ' a'
             status(f'You see{a} {names}')
 
-    def dist_to(self, obj):
-        pass
-
     def attack(self, obj):
         if obj.loc in self.B.neighbours(self.loc):
-            if self.is_hero:
-                BattleUI(self.B).go(self, obj)
-                Misc.B = self.B
-                self.cur_move = 0
-            else:
-                self.hit(obj)
+            self.hit(obj)
 
     def get_dir(self, b):
         a = self.loc
@@ -1425,14 +967,9 @@ class Being(BeingItemCastleBase):
         if dmg:
             a = dmg
         else:
-            str = self.strength if not ranged else self.range_weapon_str
-            hero_mod = 1
-            if self.hero:
-                hero_mod += (self.hero.level * 5)/100
-
-            a = int(round((str * self.n * hero_mod * mod)/3))
-
-        b = obj.health + obj.max_health*(obj.n-1)
+            str = self.strength
+            a = int(round((str * self.n * mod)/3))
+        b = obj.health
         a = obj.defend(a, type)
         c = b - a
 
@@ -1445,18 +982,16 @@ class Being(BeingItemCastleBase):
 
         if c <= 0:
             status(f'{obj} dies')
-            obj.n = obj.health = 0
+            obj.health = 0
         else:
-            n, health = divmod(c, obj.max_health)
-            obj.health = health
-            obj.n = n+1
+            obj.health = c
 
         self.cur_move = 0
 
     def defend(self, dmg, type):
         x = 0
         if type==Type.melee_attack:
-            x = self.n * self.modifiers['defense'][1]
+            x = self.defense
         return dmg - x
 
     def action(self):
@@ -1464,7 +999,6 @@ class Being(BeingItemCastleBase):
             return getattr(ID, id) in self.B.get_ids(self.neighbours() + [self.loc])
 
     def use(self):
-        """For spells maybe?"""
         ascii_letters = string.ascii_letters
         for n, (id,qty) in enumerate(self.inv.items()):
             item = Objects[id]
@@ -1485,26 +1019,20 @@ class Being(BeingItemCastleBase):
 
     @property
     def alive(self):
-        return self.n>0
+        return self.health>0
 
     @property
     def dead(self):
         return not self.alive
 
 
-class Gate(Being):
-    """Being because it has HP and can be attacked."""
-    health = 15
-    char = Blocks.door
-
-
-class Spell:
+class RangedWeapon:
     id = None
     dmg = None
     _name = None
 
     def __init__(self):
-        Objects.set_by_id(self.id, self)
+        Objects[self.id] = self
 
     @property
     def name(self):
@@ -1523,155 +1051,66 @@ class Spell:
         while x not in ('CLICK', ' ', blt.TK_ESCAPE):
             B.draw()
             loc = Loc(*get_mouse_pos())
-            puts(loc.x, loc.y, Blocks.spell_select)
+            puts(loc.x, loc.y, Blocks.circle3)
             refresh()
             x = get_and_parse_key()
         if x=='CLICK':
             loc = Loc(*get_mouse_pos())
             return B.screen_loc_to_map(loc)
 
-    def ai_cast(self, B, hero, targets):
-        self.apply(hero, choice(targets))
+    def ai_fire(self, B, being, targets):
+        self.apply(being, choice(targets))
 
-    def cast(self, B, hero):
+    def fire(self, B, being):
         B.draw()
         loc = self.select_target(B)
         if loc:
-            being = B.get_being(loc)
-            if being:
-                self.apply(hero, being)
+            tgt = B.get_being(loc)
+            if tgt:
+                self.apply(being, tgt)
 
-    def apply(self, hero, being):
+    def apply(self, being, tgt):
         pass
 
 
-class ShieldSpell(Spell):
-    cost = 4
-    id = ID.shield_spell
-
-    def apply(self, hero, being):
-        loc = being.loc
-        status(f'{being} is shielded for one turn')
-        blt_put_obj(Blocks.shield_spell, loc)
-        sleep(0.25)
-        blt_put_obj(being, loc)
-        hero.mana -= self.cost
-        being.modifiers['defense'] = [1, 1*hero.magic_power]
-
-
-class PowerBolt(Spell):
+class Pistol(RangedWeapon):
     dmg = 5
     cost = 4
-    id = ID.power_bolt
+    id = ID.pistol
 
-    def apply(self, hero, being):
+    def apply(self, being, tgt):
         loc = being.loc
-        dmg = self.dmg * hero.magic_power
-        hero.hit(being, dmg=dmg, type=Type.magic_attack, descr=self.name)
+        dmg = self.dmg
+        being.hit(tgt, dmg=dmg, type=Type.ranged_attack, descr=self.name)
+        # Use some hit animation...
         blt_put_obj(Blocks.bolt1, loc)
         sleep(0.25)
-        blt_put_obj(Blocks.bolt2, loc)
-        sleep(0.25)
         blt_put_obj(being, loc)
-        hero.mana -= self.cost
 
 
-all_spells = (PowerBolt(), ShieldSpell())
-
-class Hero(ArmyMixin, Being):
+class Player(PartyMixin, Being):
     xp = 0
-    is_hero = 1
     speed = 5
     alive = 1
-    selected = 0
     level = 1
-    type = Type.hero
+    type = Type.player
     mana = 20
+    is_player = True
     level_tiers = enumerate((500,2000,5000,10000,15000,25000,50000,100000,150000))
-    magic_power = 2
+    char = Blocks.player_l
 
-    def __init__(self, *args, player=None, army=None, spells=None, **kwargs ):
+    def __init__(self, *args, player=None, party=None, spells=None, **kwargs ):
         super().__init__(*args, **kwargs)
-        self.player = player
-        if player:
-            self.color = player.color
-            player._heroes.append(self.id)
-            if player.is_ai:
-                ai_heroes.append(self)
-        if army:
-            self.army = pad_none(army, 6)
-        else:
-            self.army = [None]*6
-        self.set_army_ownership()
-        self.spells = [ID.power_bolt, ID.shield_spell] + (spells or [])
-
-    def set_army_ownership(self):
-        for u in self.army:
-            if u:
-                u.hero = self
+        self.party = []
 
     def __str__(self):
-        if not self.player:
-            # Independent army
-            u = first(self.live_army())
-            return u.char if u else ' '
         return super().__str__()
 
-    def _str(self):
-        if self.selected:
-            return str(self), Blocks.hero_select
-        return str(self)
-
     def __repr__(self):
-        return f'<H: {self.name} ({self.player})>'
-
-    def in_castle(self):
-        self.B.found_type_at(Type.castle, self.loc)
+        return f'<P: {self.name}>'
 
     def is_ai(self):
         return not self.player or self.player.is_ai
-
-    def ai_cast_spell(self, B, targets):
-        lst = []
-        for id in self.spells:
-            lst.append(Objects.get_by_id(id))
-        lst = [s for s in lst if s.cost>=self.mana]
-        if lst:
-            choice(lst).ai_cast(B, self, targets)
-
-    def cast_spell(self, B):
-        lst = []
-        for id in self.spells:
-            lst.append(Objects.get_by_id(id))
-        lst = [s for s in lst if s.cost<=self.mana]
-
-        if not lst:
-            self.talk(self, 'Cannot cast a spell: no spells or not enough mana!')
-            return
-        x, y = 5, 1
-        ascii_letters = string.ascii_letters
-
-        new = []
-        for n, spell in enumerate(lst):
-            new.append(f' {ascii_letters[n]}) {spell.name}')
-
-        w = max(len(l) for l in new)
-        blt.clear_area(x, y, w+2, len(new))
-        for n, l in enumerate(new):
-            puts(x, y+n, l)
-
-        refresh()
-        ch = get_and_parse_key()
-        if ch and ch in ascii_letters:
-            try:
-                spell = lst[string.ascii_letters.index(ch)]
-            except IndexError:
-                B.draw()
-                return
-            spell.cast(B, self)
-        if not ch:
-            B.draw()
-
 
     def add_xp(self, xp):
         self.xp+=xp
@@ -1680,117 +1119,19 @@ class Hero(ArmyMixin, Being):
                 break
             self.level = lev
 
-    def reset_mana(self):
-        self.mana = 20 + self.level*5
+class IndependentParty(Player):
+    pass
 
-    def ai_move(self):
-        """This method is only for ai move by Heroes on the main map, NOT by IndependentArmy or units."""
-        B = self.B
-        castles = [c for c in self.player.castles if c.board_map==self.board_map and not B.get_being(c.loc)]
-        for player in [p for p in players if p!=self.player]:
-            for hero in [h for h in player.heroes if h.board_map==self.board_map]:
-                if dist(self.loc, hero.loc) < 7:
-                    mod = 1.3   # don't be a wuss
-                    dst = None
-                    if self.total_strength()*mod < hero.total_strength():
-                        if not self.in_castle():
-                            dst = self.closest(castles)
-                    else:
-                        dst = hero
-
-                    while dst and self.cur_move and self.loc!=dst.loc and self.alive:
-                        loc = B.next_move_to(self.loc, dst.loc)
-                        if not loc: break
-                        self.move(loc=loc)
-                        sleep(0.25)
-                        B.draw()
-                    self.cur_move = self.speed
-
-    def can_merge(self, type):
-        return any(s is None or s.type==type for s in self.army)
-
-
-class IndependentArmy(Hero):
-    is_hero = 0
-
-class ArmyUnit(Being):
-    _name = None
-    last_dir = 'l'
-    shots = None
-
-    def __init__(self, *args, hero=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.hero = hero
-
-    def _str(self):
-        rv = [str(self)]
-        if self.n>99:
-            rv.append(Blocks.sub_plus)
-        elif self.n<10:
-            rv.append(getitem(Blocks.sub, self.n))
-            # puts(self.loc.x*4, self.loc.y*4, '[font=subscript]{self.n}[')
-        else:
-            rv.append(getitem(Blocks.sub, self.n//10))
-            rv.append(getitem(Blocks.sub2, self.n%10))
-        return rv
-
-    def __repr__(self):
-        return f'<Unit: {self.name}, {self.char}, {self.n}>'
-
-    @property
-    def total_health(self):
-        return self.n * self.health
-
-class Peasant(ArmyUnit):
-    strength = 1
-    defense = 1
-    health = 5
-    speed = 4
-    cost = 15
-    char = Blocks.peasant
-    type = Type.peasant
-
-class Pikeman(ArmyUnit):
-    strength = 4
-    defense = 5
-    health = 10
-    speed = 4
-    cost = 25
-    char = Blocks.pikeman
-    type = Type.pikeman
-
-class Griffin(ArmyUnit):
-    strength = 8
-    defense = 8
-    health = 25
-    speed = 6
-    cost = 200
-    char = Blocks.griffin_r
-    type = Type.griffin
-
-    def defend(self, dmg, type):
-        dmg = super().defend(dmg, type)
-        if type==Type.magic_attack and random()>.8:
-            status('Griffin defends against magic attack')
-            dmg = 0
-        return dmg
-
-
-class Archer(ArmyUnit):
+class Shooter(Being):
     strength = 6
     defense = 3
     health = 10
     speed = 4
     cost = 30
-    range_weapon_str = 1
-    range = 7
-    char = Blocks.archer_r
-    type = Type.archer
-    shots = 12
 
-    def fire(self, B, hero):
-        char = Blocks.arrow_l if self.char==Blocks.archer_l else Blocks.arrow_r
-        a = Arrow(char, '', loc=self.loc)
+    def fire(self, B, player):
+        char = Blocks.bullet
+        a = Bullet(char, '', loc=self.loc)
         B.put(a)
         mod = 1
         for _ in range(self.range):
@@ -1798,107 +1139,13 @@ class Archer(ArmyUnit):
             if B.found_type_at(Type.blocking, a.loc):
                 mod = 0.5
             being = B.get_being(a.loc)
-            if being and being.alive and being.hero!=hero:
+            if being and being.alive and being.player!=player:
                 self.hit(being, ranged=1, mod=mod)
                 B.remove(being)     # shuffle on top of arrow
                 B.put(being)
                 break
             blt_put_obj(a)
             sleep(0.15)
-
-class Cavalier(ArmyUnit):
-    strength = 5
-    defense = 4
-    health = 9
-    speed = 7
-    cost = 55
-    char = Blocks.cavalier_r
-    type = Type.cavalier
-
-class Centaur(ArmyUnit):
-    strength = 5
-    defense = 3
-    health = 8
-    speed = 6
-    cost = 70
-    char = Blocks.centaur_r
-    type = Type.centaur
-
-class Building(BeingItemCastleBase):
-    available = 0
-    _name = None
-    type = Type.building
-
-    def __init__(self, loc=None, board_map=None, castle=None, player=None):
-        self.loc, self.board_map, self.castle, self.player = loc, board_map, castle, player
-        if board_map:
-            self.B.put(self)
-
-    def __repr__(self):
-        char = super().__repr__()
-        return f'<{char}: {self.name} ({self.player})>'
-
-    @property
-    def name(self):
-        return self._name or self.__class__.__name__
-
-    def _str(self):
-        return str(self), getitem(Blocks.sub, self.available, '+')
-
-class Sawmill(Building):
-    resource = ID.wood
-    available = 4
-    growth = 2
-    char = Blocks.sawmill
-
-
-class Hut(Building):
-    cost = {ID.gold: 250}
-    units = Peasant
-    char = Blocks.hut
-    available = 5
-    growth = 4
-
-class Guardhouse(Building):
-    cost = {ID.gold: 500, ID.ore: 10}
-    units = Pikeman
-    char = Blocks.guardhouse
-    available = 10
-    growth = 14
-
-class ArchersTower(Building):
-    cost = {ID.gold: 500, ID.wood:5, ID.ore:5}
-    units = Archer
-    char = Blocks.archers_tower
-    available = 6
-    growth = 9
-
-class GriffinTower(Building):
-    cost = {ID.gold: 1000, ID.ore:5}
-    units = Griffin
-    char = Blocks.griffin_tower
-    available = 6
-    growth = 7
-
-class JoustingGround(Building):
-    cost = {ID.gold: 750, ID.wood: 5}
-    units = Cavalier
-    char = Blocks.jousting_ground
-    available = 2
-    growth = 2
-
-class CentaurStables(Building):
-    cost = {ID.gold: 500, ID.wood: 5}
-    units = Centaur
-    char = Blocks.centaur_stables
-    available = 10
-    growth = 14
-
-class CastleTownType(TownType):
-    building_types = (Hut, Guardhouse, ArchersTower, JoustingGround)
-
-class RampartTownType(TownType):
-    building_types = (CentaurStables,)
 
 class Saves:
     saves = {}
@@ -1933,68 +1180,45 @@ class Saves:
         sh.close()
         return B.get_all(player.loc), name
 
+# board_setup()
+# player = Player(Boards.b_1.specials[1], board_map='1')
+# print("str(player)", str(player))
+# print("Objects[ID.player]", Objects[ID.player])
+# sys.exit()
 
 def main(load_game):
     blt.open()
-    blt.set(f"window: resizeable=true, size=80x25, cellsize=auto, title='Heroes of Sorcery'; font: FreeMono.ttf, size={SIZE}")
+    blt.set(f"window: resizeable=true, size=80x25, cellsize=auto, title='Atom Punk'; font: FreeMono.ttf, size={SIZE}")
     blt.set("input.filter={keyboard, mouse+}")
     blt.color("white")
     blt.composition(True)
-
-    # blt.set("U+E300: NotoEmoji-Regular.ttf, size=32x32, spacing=3x2, codepage=notocp.txt, align=top-left")  # GOOGLE
-    # blt.set("U+E400: FreeMono.ttf, size=32x32, spacing=3x2, codepage=monocp.txt, align=top-left")          # GNU
-
     blt.clear()
     if not os.path.exists('saves'):
         os.mkdir('saves')
     Misc.is_game = 1
 
-    Misc.player = Player('green', False, color='green')
-    Misc.blue_player = Player('blue', True, color='lighter blue')
-    players.extend([Misc.player, Misc.blue_player])
-
     ok=1
     board_setup()
+    player = Misc.player = Player(Boards.b_1.specials[1], board_map='1', id=ID.player)
 
-    hero = Misc.hero = Objects.hero1
+
     while ok:
-        for hero in [h for h in Misc.player.heroes if h.alive]:
-            hero.mana+=1
-            while ok and ok!=END_MOVE and hero.alive:
-                hero.B.draw()
-                Misc.hero = hero
-                hero.selected = 1
-                blt_put_obj(hero)
-                ok = handle_ui(hero)
-                if ok=='q': return
-                if ok==END_MOVE:
-                    hero.selected = 0
-                    blt_put_obj(hero)
-                    hero.cur_move = hero.speed
+        ok = handle_ui(Misc.player)
+        if ok=='q': return
+        if ok==END_MOVE:
+            blt_put_obj(player)
+            player.cur_move = player.speed
             ok=1
-        for h in ai_heroes:
-            if h.alive:
-                h.mana+=1
-                h.ai_move()
-        for b in player_buildings + ai_buildings:
-            b.available += b.growth
-
-        Misc.day+=1
-        if Misc.day==8:
-            Misc.week+=1
-            Misc.day = 1
-        for id in castles:
-            Objects.get_by_id(id).handle_day()
 
 
-def handle_ui(unit, hero=None, only_allow=None):
+def handle_ui(unit):
     if not unit.cur_move:
         return END_MOVE
     k = None
-    while not k or (only_allow and k and k not in only_allow):
+    while not k:
         k = get_and_parse_key()
     puts(0,1, ' '*78)
-    B = unit.B if unit.is_hero else Misc.B
+    B = Misc.B
     if k=='q':
         return 'q'
     elif k in 'yubnhlHL':
@@ -2086,7 +1310,7 @@ def handle_ui(unit, hero=None, only_allow=None):
                 txt.append(f'{item.name} {n}')
         B.display(txt)
 
-    B.draw(battle = (not unit.is_hero))
+    B.draw(battle = (not unit.is_player))
     return 1
 
 
@@ -2186,7 +1410,7 @@ def editor(_map):
         B.draw()
         x = loc.x*2 + (0 if loc.y%2==0 else 1)
         blt.clear_area(x,loc.y,1,1)
-        puts(x, loc.y, Blocks.cursor)
+        puts(x, loc.y, Blocks.circle3)
         if brush==Blocks.blank:
             tool = 'eraser'
         elif brush==Blocks.rock:
