@@ -108,6 +108,7 @@ class ID(Enum):
     cap = auto()
     pistol = auto()
     player = auto()
+    elder = auto()
 
 
 class Type(Enum):
@@ -115,6 +116,89 @@ class Type(Enum):
     container = auto()
     blocking = auto()
     player = auto()
+
+conv_str = {
+    ID.elder:
+    {
+    1: "Congratulations on your victory in the Temple of Trials! Please take some caps and a flask for Vault 13, that should help you in your journey.",
+    2: "There's more I would like to know.",
+    3: "Tell me more about the GECK.",
+    4: "It's a Garden creation kit, it will make our land more fruitful, just as it was before the Cataclysm",
+    5: "Where is Klamath?",
+    6: "It should be marked on your map",
+
+    }
+}
+
+conversations = {
+    ID.elder:
+        [
+            1, 2,
+            [
+                [3,4],
+                [5,6],
+            ],
+        ],
+    }
+
+class Talk:
+    def __init__(self, being, id=None):
+        id = id or being.id
+        self.conv_str, self.conversations = conv_str[id], conversations[id]
+        self.loc = being.loc
+        self.ind = 0
+        self.current = conversations
+
+    def choose(self, lst):
+        multichoice = len(txt)
+        for n, t in enumerate(txt):
+            lst.append(f'{n+1}) {t}')
+        txt = '\n'.join(lst)
+        for _ in range(3):
+            k = get_and_parse_key()
+            try:
+                k=int(k)
+            except ValueError:
+                k = 0
+            if k in range(1, multichoice+1):
+                return k
+
+    def talk(self):
+        try: conv = self.current[self.ind]
+        except IndexError: return None
+        print("conv", conv)
+        if isinstance(conv, SEQ_TYPES):
+            i = self.choose(conv)
+            self.current = conv[i]
+            self.ind = 1
+        else:
+            self.display(self.conv_str[conv])
+            input('> ')
+            self.ind += 1
+        rv = self.talk()
+        if not rv: return None
+
+    def display(self, txt):
+        x = min(self.loc.x, 60)
+
+        lst = []
+        x = min(40, x)
+        w = 78 - x
+        lines = (len(txt) // w) + 4
+        txt_lines = wrap(txt, w)
+        txt = '\n'.join(txt_lines)
+        offset_y = lines if self.loc.y<8 else -lines
+
+        y = max(0, self.loc.y+offset_y)
+        W = max(len(l) for l in txt_lines)
+        blt.clear_area(x+1, y+1, W, len(txt_lines))
+        puts(x+1,y+1, txt)
+        refresh()
+        k = None
+        while k!=' ':
+            k = get_and_parse_key()
+        self.B.draw()
+
 
 class Blocks:
     """All game tiles."""
@@ -637,7 +721,7 @@ class BlockingItem(Item):
 
 class PartyMixin:
     def total_strength(self):
-        return sum(u.health for u in self.live_party())
+        return sum(u.hp for u in self.live_party())
 
     def live_party(self):
         return list(u for u in filter(None, self.party) if u.alive)
@@ -654,13 +738,7 @@ class BattleUI:
         if winner.is_player:
             winner.xp += loser.total_strength()//2
         for u in winner.live_party():
-            if u.total_health < hp:
-                u.n=0
-                hp-=u.total_health
-            else:
-                n, health = divmod(hp, u.max_health)
-                u.health = health
-                u.n = n+1
+            u.hp = u.max_hp
         loser.party = pad_none([], 6)
 
     def go(self, a, b):
@@ -744,18 +822,54 @@ class BattleUI:
                         break
 
 
+class Skills(Enum):
+    small_guns = auto()
+    big_guns = auto()
+    energy_weapons = auto()
+    melee_weapons = auto()
+    unarmed = auto()
+    throwing = auto()
+    first_aid = auto()
+    doctor = auto()
+    sneak = auto()
+    lockpick = auto()
+    steal = auto()
+    traps = auto()
+    science = auto()
+    repair = auto()
+    speech = auto()
+    barter = auto()
+    gambling = auto()
+    outdoorsman = auto()
+
 class LoadBoard:
     def __init__(self, new, b_new):
         self.new, self.b_new = new, b_new
 
 class Being(BeingItemBase):
-    health = 1
-    max_health = 1
+    hp = 1
+    max_hp = 1
     is_being = 1
     type = None
     char = None
     n_moves = None
     path = None
+
+    strength = 5
+    perception = 5
+    endurance = 5
+    charisma = 5
+    intelligence = 5
+    agility = 5
+    luck = 5
+    armor_class = 10
+    action_points = 7
+    melee_attack = 1
+    damage_resistance = 0
+    poison_resistance = 0
+    radiation_resistance = 0
+    healing_rate = 1
+    critical_chance = 1
 
     def __init__(self, loc=None, board_map=None, put=True, id=None, name=None, state=0, char='?',
                  color=None):
@@ -768,11 +882,13 @@ class Being(BeingItemBase):
             Objects[id]= self
         if board_map and put:
             self.B.put(self)
-        self.max_health = self.health
+        self.max_health = self.hp
         self.path = {}
+        self.skills = defaultdict(int)
+        self.traits = []
 
     def __str__(self):
-        return super().__str__() if self.health>0 else Blocks.rubbish
+        return super().__str__() if self.hp>0 else Blocks.rubbish
 
     @property
     def name(self):
@@ -783,6 +899,8 @@ class Being(BeingItemBase):
         if isinstance(being, int):
             being = Objects.get(being)
         loc = being.loc
+        conv = conv_str[being.id]
+        tree = conversations[being.id]
         if isinstance(dialog, str):
             dialog = [dialog]
         x = min(loc.x, 60)
@@ -969,7 +1087,7 @@ class Being(BeingItemBase):
         else:
             str = self.strength
             a = int(round((str * self.n * mod)/3))
-        b = obj.health
+        b = obj.hp
         a = obj.defend(a, type)
         c = b - a
 
@@ -982,9 +1100,9 @@ class Being(BeingItemBase):
 
         if c <= 0:
             status(f'{obj} dies')
-            obj.health = 0
+            obj.hp = 0
         else:
-            obj.health = c
+            obj.hp = c
 
         self.cur_move = 0
 
@@ -1019,12 +1137,14 @@ class Being(BeingItemBase):
 
     @property
     def alive(self):
-        return self.health>0
+        return self.hp>0
 
     @property
     def dead(self):
         return not self.alive
 
+class Elder(Being):
+    id = ID.elder
 
 class RangedWeapon:
     id = None
@@ -1098,6 +1218,7 @@ class Player(PartyMixin, Being):
     is_player = True
     level_tiers = enumerate((500,2000,5000,10000,15000,25000,50000,100000,150000))
     char = Blocks.player_l
+    self.hp = 44
 
     def __init__(self, *args, player=None, party=None, spells=None, **kwargs ):
         super().__init__(*args, **kwargs)
@@ -1125,7 +1246,7 @@ class IndependentParty(Player):
 class Shooter(Being):
     strength = 6
     defense = 3
-    health = 10
+    hp = 10
     speed = 4
     cost = 30
 
@@ -1200,6 +1321,7 @@ def main(load_game):
     ok=1
     board_setup()
     player = Misc.player = Player(Boards.b_1.specials[1], board_map='1', id=ID.player)
+    Misc.B.draw()
 
 
     while ok:
