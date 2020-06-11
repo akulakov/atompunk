@@ -126,7 +126,6 @@ conv_str = {
     4: "It's a Garden creation kit, it will make our land more fruitful, just as it was before the Cataclysm",
     5: "Where is Klamath?",
     6: "It should be marked on your map",
-
     }
 }
 
@@ -142,15 +141,18 @@ conversations = {
     }
 
 class Talk:
-    def __init__(self, being, id=None):
+    def __init__(self, B, being, id=None):
+        self.B = B
         id = id or being.id
         self.conv_str, self.conversations = conv_str[id], conversations[id]
         self.loc = being.loc
         self.ind = 0
-        self.current = conversations
+        self.current = self.conversations
+        self.choice_stack = []
 
-    def choose(self, lst):
+    def choose(self, txt):
         multichoice = len(txt)
+        lst = []
         for n, t in enumerate(txt):
             lst.append(f'{n+1}) {t}')
         txt = '\n'.join(lst)
@@ -168,12 +170,15 @@ class Talk:
         except IndexError: return None
         print("conv", conv)
         if isinstance(conv, SEQ_TYPES):
+            self.choice_stack.append(conv)
             i = self.choose(conv)
             self.current = conv[i]
             self.ind = 1
         else:
             self.display(self.conv_str[conv])
-            input('> ')
+            k=None
+            while k != ' ':
+                k = get_and_parse_key()
             self.ind += 1
         rv = self.talk()
         if not rv: return None
@@ -195,8 +200,11 @@ class Talk:
         puts(x+1,y+1, txt)
         refresh()
         k = None
-        while k!=' ':
+        while k not in (' ', 'LEFT'):
             k = get_and_parse_key()
+        if k=='LEFT':
+            self.ind = 0
+            self.current = [self.choice_stack.pop()]
         self.B.draw()
 
 
@@ -218,6 +226,7 @@ class Blocks:
     player_b = '\u26d8'
     rubbish = '\u26c1'
     circle3 = '\u25cc'  # dotted
+    woman = '\u26ff'
 
 
 BLOCKING = [Blocks.rock, Type.door1, Type.blocking]
@@ -438,6 +447,15 @@ class Board:
             for x, cell in enumerate(row):
                 yield Loc(x,y), cell
 
+    def get_ids(self, loc):
+        if isinstance(loc, Loc):
+            loc = [loc]
+        lst = []
+        for l in loc:
+            lst.extend(self.get_all(l))
+        lst = [getattr(x, 'id', None) or x for x in lst]
+        return lst
+
     def gen_graph(self, tgt):
         self.g = {}
         for loc, _ in self:
@@ -559,6 +577,7 @@ class Board:
 
     def board_1(self):
         self.load_map('1')
+        Elder(self.specials[2], '1')
 
     def screen_loc_to_map(self, loc):
         x,y=loc
@@ -873,13 +892,15 @@ class Being(BeingItemBase):
 
     def __init__(self, loc=None, board_map=None, put=True, id=None, name=None, state=0, char='?',
                  color=None):
-        self.id, self.loc, self.board_map, self._name, self.state, self.color  = \
-                id, loc, board_map, name, state, color
+        self.loc, self.board_map, self._name, self.state, self.color  = \
+                loc, board_map, name, state, color
         self.char = self.char or char
         self.inv = defaultdict(int)
         self.cur_move = self.n_moves
         if id:
-            Objects[id]= self
+            self.id = id
+        if self.id:
+            Objects[self.id] = self
         if board_map and put:
             self.B.put(self)
         self.max_health = self.hp
@@ -894,10 +915,15 @@ class Being(BeingItemBase):
     def name(self):
         return self._name or self.__class__.__name__
 
-    def talk(self, being, dialog=None, yesno=False, resp=False):
+    def talk(self, being, yesno=False, resp=False):
         """Messages, dialogs, yes/no, prompt for response, multiple choice replies."""
         if isinstance(being, int):
             being = Objects.get(being)
+        print('talk to', being)
+        if not yesno and not resp:
+            Talk(self.B, being).talk()
+            return
+
         loc = being.loc
         conv = conv_str[being.id]
         tree = conversations[being.id]
@@ -1113,8 +1139,15 @@ class Being(BeingItemBase):
         return dmg - x
 
     def action(self):
+        print ("in def is_near()")
         def is_near(id):
-            return getattr(ID, id) in self.B.get_ids(self.neighbours() + [self.loc])
+            return getattr(ID, id) in self.B.get_ids(self.B.neighbours(self.loc) + [self.loc])
+        # print("ID.elder", ID.elder)
+        # print(self.B.get_ids(self.neighbours() + [self.loc]))
+        # print("Objects.elder.loc", Objects.elder.loc)
+
+        if is_near('elder'):
+            self.talk(Objects.elder)
 
     def use(self):
         ascii_letters = string.ascii_letters
@@ -1145,6 +1178,7 @@ class Being(BeingItemBase):
 
 class Elder(Being):
     id = ID.elder
+    char = Blocks.woman
 
 class RangedWeapon:
     id = None
@@ -1218,7 +1252,7 @@ class Player(PartyMixin, Being):
     is_player = True
     level_tiers = enumerate((500,2000,5000,10000,15000,25000,50000,100000,150000))
     char = Blocks.player_l
-    self.hp = 44
+    hp = 44
 
     def __init__(self, *args, player=None, party=None, spells=None, **kwargs ):
         super().__init__(*args, **kwargs)
@@ -1323,7 +1357,6 @@ def main(load_game):
     player = Misc.player = Player(Boards.b_1.specials[1], board_map='1', id=ID.player)
     Misc.B.draw()
 
-
     while ok:
         ok = handle_ui(Misc.player)
         if ok=='q': return
@@ -1333,7 +1366,7 @@ def main(load_game):
             ok=1
 
 
-def handle_ui(unit):
+def handle_ui(unit, battle=False):
     if not unit.cur_move:
         return END_MOVE
     k = None
@@ -1388,7 +1421,10 @@ def handle_ui(unit):
     elif k == 'v':
         status(str(unit.loc))
     elif k == ' ':
-        unit.cur_move=0
+        if battle:
+            unit.cur_move=0
+        else:
+            unit.action()
     elif k == '5' and DBG:
         k = get_and_parse_key()
         k2 = get_and_parse_key()
