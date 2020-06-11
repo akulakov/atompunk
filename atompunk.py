@@ -110,6 +110,8 @@ class ID(Enum):
     player = auto()
     elder = auto()
 
+    vault13_flask = auto()
+
 
 class Type(Enum):
     door1 = auto()
@@ -126,6 +128,8 @@ conv_str = {
     4: "It's a Garden creation kit, it will make our land more fruitful, just as it was before the Cataclysm",
     5: "Where is Klamath?",
     6: "It should be marked on your map",
+    7: "Where is Vault 13?",
+    8: "Somewhere in the Wastes.. beyond that, none of the tribesmen know.",
     }
 }
 
@@ -136,6 +140,7 @@ conversations = {
             [
                 [3,4],
                 [5,6],
+                [7,8],
             ],
         ],
     }
@@ -154,8 +159,9 @@ class Talk:
         multichoice = len(txt)
         lst = []
         for n, t in enumerate(txt):
-            lst.append(f'{n+1}) {t}')
+            lst.append(f'{n+1}) {self.conv_str[t[0]]}')
         txt = '\n'.join(lst)
+        self.display(txt, False)
         for _ in range(3):
             k = get_and_parse_key()
             try:
@@ -163,27 +169,29 @@ class Talk:
             except ValueError:
                 k = 0
             if k in range(1, multichoice+1):
-                return k
+                return k-1
 
     def talk(self):
         try: conv = self.current[self.ind]
-        except IndexError: return None
-        print("conv", conv)
+        except Exception as e:
+            print("talk(), e", e)
+            return None
         if isinstance(conv, SEQ_TYPES):
             self.choice_stack.append(conv)
             i = self.choose(conv)
-            self.current = conv[i]
+            if i:
+                self.current = conv[i]
             self.ind = 1
         else:
-            self.display(self.conv_str[conv])
-            k=None
-            while k != ' ':
-                k = get_and_parse_key()
+            rv = self.display(self.conv_str[conv])
+            if not rv: return None
             self.ind += 1
         rv = self.talk()
         if not rv: return None
 
-    def display(self, txt):
+    def display(self, txt, wait=True):
+        print ("in def display()", txt)
+        self.B.draw()
         x = min(self.loc.x, 60)
 
         lst = []
@@ -200,12 +208,16 @@ class Talk:
         puts(x+1,y+1, txt)
         refresh()
         k = None
-        while k not in (' ', 'LEFT'):
+        while wait and k not in (' ', 'LEFT', 'ESCAPE'):
             k = get_and_parse_key()
+        if k=='ESCAPE':
+            return
         if k=='LEFT':
-            self.ind = 0
+            self.ind = -1
             self.current = [self.choice_stack.pop()]
-        self.B.draw()
+        if wait:
+            self.B.draw()
+        return True
 
 
 class Blocks:
@@ -226,7 +238,7 @@ class Blocks:
     player_b = '\u26d8'
     rubbish = '\u26c1'
     circle3 = '\u25cc'  # dotted
-    woman = '\u26ff'
+    woman = '\u2700'
 
 
 BLOCKING = [Blocks.rock, Type.door1, Type.blocking]
@@ -446,6 +458,15 @@ class Board:
         for y, row in enumerate(self.B):
             for x, cell in enumerate(row):
                 yield Loc(x,y), cell
+
+    def display(self, txt):
+        w = max(len(l) for l in txt) + 1
+        X,Y = 5, 2
+        for y, ln in enumerate(txt):
+            blt.clear_area(X, Y+y+1, w+3, 1)
+            puts(X, Y+y+1, ' ' + ln)
+        refresh()
+        blt.read()
 
     def get_ids(self, loc):
         if isinstance(loc, Loc):
@@ -873,6 +894,7 @@ class Being(BeingItemBase):
     char = None
     n_moves = None
     path = None
+    caps = 0
 
     strength = 5
     perception = 5
@@ -1142,12 +1164,12 @@ class Being(BeingItemBase):
         print ("in def is_near()")
         def is_near(id):
             return getattr(ID, id) in self.B.get_ids(self.B.neighbours(self.loc) + [self.loc])
-        # print("ID.elder", ID.elder)
-        # print(self.B.get_ids(self.neighbours() + [self.loc]))
-        # print("Objects.elder.loc", Objects.elder.loc)
 
         if is_near('elder'):
             self.talk(Objects.elder)
+            self.caps += 150
+            Item('f', 'Vault 13 Flask', id=ID.vault13_flask)
+            self.inv[ID.vault13_flask] += 1
 
     def use(self):
         ascii_letters = string.ascii_letters
@@ -1462,7 +1484,7 @@ def handle_ui(unit, battle=False):
 
     elif k == 'i':
         txt = []
-        for id, n in Misc.hero.inv.items():
+        for id, n in Misc.player.inv.items():
             item = Objects[id]
             if item and n:
                 txt.append(f'{item.name} {n}')
