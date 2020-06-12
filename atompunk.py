@@ -105,12 +105,8 @@ class ObjectsClass:
 Objects = ObjectsClass()
 
 class ID(Enum):
-    cap = auto()
-    pistol = auto()
     player = auto()
     elder = auto()
-
-    vault13_flask = auto()
 
 
 class Type(Enum):
@@ -118,6 +114,10 @@ class Type(Enum):
     container = auto()
     blocking = auto()
     player = auto()
+    knife = auto()
+    vault13_flask = auto()
+    pistol = auto()
+    cap = auto()
 
 conv_str = {
     ID.elder:
@@ -239,6 +239,11 @@ class Blocks:
     rubbish = '\u26c1'
     circle3 = '\u25cc'  # dotted
     woman = '\u2700'
+    knife = '\u26e0'
+    cupboard = '\u269a'
+    house_c1 = '\u250c'
+    house_c2 = '\u2518'
+    hex = '\u26e1'
 
 
 BLOCKING = [Blocks.rock, Type.door1, Type.blocking]
@@ -363,7 +368,7 @@ def stats(castle=None, battle=False):
         move, n_moves = u.cur_move, u.n_moves
         move_str = f' | Move {move}/{n_moves}'
     s=''
-    st = s + f'{move_str} | {Misc.B._map}'
+    st = s + f'[Caps:{pl.caps}] {move_str} | {Misc.B._map}'
     x = len(st)+2
     puts2(1, 0, blt_esc(st))
     y = 1
@@ -436,6 +441,7 @@ def rand_color(r, g, b):
         hex(randrange(*g))[2:],
         hex(randrange(*b))[2:],
     )
+
 
 class Board:
     """Game board (single screen)."""
@@ -555,6 +561,8 @@ class Board:
         self.specials = specials = defaultdict(list)
         self.buildings = []
         BL=Blocks
+        house_c1 = []
+        house_c2 = []
 
         for y in range(HEIGHT):
             for x in range(WIDTH):
@@ -574,8 +582,17 @@ class Board:
                     elif char==Blocks.water:
                         Item(Blocks.water, 'water', loc, type=Type.water, board_map=self._map)
 
-                    # elif char in (BL.book1, BL.book2):
-                    #     Item(char, 'books', loc, self._map)
+                    elif char==Blocks.house_c1:
+                        if for_editor:
+                            Item(Blocks.house_c1, '', loc, board_map=self._map)
+                        else:
+                            house_c1.append(loc)
+
+                    elif char==Blocks.house_c2:
+                        if for_editor:
+                            Item(Blocks.house_c2, '', loc, board_map=self._map)
+                        else:
+                            house_c2.append(loc)
 
                     elif char in (Blocks.tree1, Blocks.tree2):
                         col = rand_color(33, (60,255), (10,140))
@@ -594,7 +611,38 @@ class Board:
                         specials[int(char)] = loc
                         if for_editor:
                             self.put(char, loc)
+
+        c2set = set(house_c2)
+        for loc in house_c1:
+            for _ in range(HEIGHT):
+                l = loc
+                if l.x < WIDTH-2:
+                    l = l.mod_r()
+                if l.y < HEIGHT-2:
+                    l = l.mod_d()
+                intr_hr = c2set & set(line(Loc(loc.x,l.y), l))
+                intr_vr = c2set & set(line(Loc(l.x,loc.y), l))
+                c2 = None
+                if intr_hr: c2 = intr_hr.pop()
+                if intr_vr: c2 = intr_vr.pop()
+                if c2:
+                    self.buildings.append(rect(loc, c2))
+                    break
+
         return containers, doors, specials
+
+    def rect(self, a, b):
+        lst = []
+        for x in range(a.x, b.x+1):
+            lst.extend( Loc(a.x, y) for y in range(a.y, b.y+1) )
+        return lst
+
+
+    def line(self, a, b):
+        if a.x==b.x:
+            return [Loc(a.x, y) for y in range(a.y, b.y+1)]
+        elif a.y==b.y:
+            return [Loc(x, a.y) for x in range(a.x, b.x+1)]
 
     def board_1(self):
         self.load_map('1')
@@ -625,6 +673,11 @@ class Board:
                 elif isinstance(a, ID):
                     a = Objects[a]
                     puts(x,y,a)
+
+        for bld in self.buildings:
+            if Misc.player.loc not in set(bld):
+                for loc in bld:
+                    puts(loc.x, loc.y, Blocks.rock)
 
         for y,x,txt in self.labels:
             puts(x,y,txt)
@@ -753,6 +806,10 @@ class Item(BeingItemBase):
             self.B.remove(self)
             self.loc = new
             self.B.put(self)
+
+class Knife(Item):
+    char = Blocks.knife
+    type = Type.knife
 
 class BlockingItem(Item):
     def __init__(self, *args, **kwargs):
@@ -1252,7 +1309,7 @@ class RangedWeapon:
 class Pistol(RangedWeapon):
     dmg = 5
     cost = 4
-    id = ID.pistol
+    type = Type.pistol
 
     def apply(self, being, tgt):
         loc = being.loc
@@ -1356,12 +1413,6 @@ class Saves:
         sh['saves'] = {name: s}
         sh.close()
         return B.get_all(player.loc), name
-
-# board_setup()
-# player = Player(Boards.b_1.specials[1], board_map='1')
-# print("str(player)", str(player))
-# print("Objects[ID.player]", Objects[ID.player])
-# sys.exit()
 
 def main(load_game):
     blt.open()
@@ -1556,12 +1607,16 @@ def editor(_map):
             B.put(choice((Blocks.tree1, Blocks.tree2)), loc)
             brush = 'T'
         elif k == 'o':
-            cmds = ''.split()
+            cmds = 'h1 h2'.split()
             cmd = ''
             while 1:
                 k = get_and_parse_key()
                 if k:
                     cmd += k
+                if cmd == 'h1':
+                    B.put(Blocks.house_c1, loc)
+                elif cmd == 'h2':
+                    B.put(Blocks.house_c2, loc)
                 elif any(c.startswith(cmd) for c in cmds):
                     continue
                 break
