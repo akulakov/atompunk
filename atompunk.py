@@ -243,7 +243,8 @@ class Blocks:
     cupboard = '\u269a'
     house_c1 = '\u250c'
     house_c2 = '\u2518'
-    hex = '\u26e1'
+    hex = '\u26e2'
+    roof = hex
 
 
 BLOCKING = [Blocks.rock, Type.door1, Type.blocking]
@@ -561,8 +562,7 @@ class Board:
         self.specials = specials = defaultdict(list)
         self.buildings = []
         BL=Blocks
-        house_c1 = []
-        house_c2 = []
+        roofs = []
 
         for y in range(HEIGHT):
             for x in range(WIDTH):
@@ -582,17 +582,9 @@ class Board:
                     elif char==Blocks.water:
                         Item(Blocks.water, 'water', loc, type=Type.water, board_map=self._map)
 
-                    elif char==Blocks.house_c1:
-                        if for_editor:
-                            Item(Blocks.house_c1, '', loc, board_map=self._map)
-                        else:
-                            house_c1.append(loc)
-
-                    elif char==Blocks.house_c2:
-                        if for_editor:
-                            Item(Blocks.house_c2, '', loc, board_map=self._map)
-                        else:
-                            house_c2.append(loc)
+                    elif char==Blocks.roof:
+                        Item(Blocks.roof, '', loc, self._map)
+                        roofs.append(loc)
 
                     elif char in (Blocks.tree1, Blocks.tree2):
                         col = rand_color(33, (60,255), (10,140))
@@ -604,32 +596,25 @@ class Board:
                     elif char==Blocks.rock2:
                         Item(char, '', loc, self._map)
 
-                    # elif char==Blocks.soldier:
-                    #     Being(loc, name='Soldier', char=BL.soldier, board_map=self._map)
-
                     elif char in '0123456789':
                         specials[int(char)] = loc
                         if for_editor:
                             self.put(char, loc)
 
-        c2set = set(house_c2)
-        for loc in house_c1:
-            for _ in range(HEIGHT):
-                l = loc
-                if l.x < WIDTH-2:
-                    l = l.mod_r()
-                if l.y < HEIGHT-2:
-                    l = l.mod_d()
-                intr_hr = c2set & set(line(Loc(loc.x,l.y), l))
-                intr_vr = c2set & set(line(Loc(l.x,loc.y), l))
-                c2 = None
-                if intr_hr: c2 = intr_hr.pop()
-                if intr_vr: c2 = intr_vr.pop()
-                if c2:
-                    self.buildings.append(rect(loc, c2))
-                    break
-
+        self.handle_buildings(roofs)
         return containers, doors, specials
+
+    def handle_buildings(self, roofs):
+        g = defaultdict(list)
+        for loc in roofs:
+            for nloc in self.neighbours(loc):
+                if B[nloc] == Blocks.roof:
+                    g[loc].append(nloc)
+        bld = []
+        for loc, nbr in g.items():
+            for b in bld:
+                if 
+
 
     def rect(self, a, b):
         lst = []
@@ -668,11 +653,11 @@ class Board:
                 x*=2
                 if y%2==1:
                     x+=1
-                if isinstance(a, str):
-                    puts(x,y,a)
-                elif isinstance(a, ID):
+                # if isinstance(a, str):
+                    # puts(x,y,a)
+                if isinstance(a, ID):
                     a = Objects[a]
-                    puts(x,y,a)
+                puts(x,y,a)
 
         for bld in self.buildings:
             if Misc.player.loc not in set(bld):
@@ -719,6 +704,19 @@ class Board:
         return False
 
 
+def find_connected_roofs(B, loc, bld=None, seen=None):
+    seen = seen or set([loc])
+    bld = bld or set([loc])
+    for loc in B.neighbours(loc):
+        if loc in seen:
+            continue
+        if B[loc]==Blocks.roof:
+            bld.add(loc)
+            find_connected_roofs(B, loc, bld, seen)
+        seen.add(loc)
+    return bld
+
+
 class Boards:
     @staticmethod
     def get_by_map(map):
@@ -745,10 +743,11 @@ class BeingItemBase:
             self.B.put(self)
 
     def __str__(self):
-        c=self.char
-        if isinstance(c, int):
-            c = '[U+{}]'.format(hex(c)[2:])
-        return c
+        # c=self.char
+        # if isinstance(c, int):
+        #     c = '[U+{}]'.format(hex(c)[2:])
+        # return c
+        return self.char
 
     def tele(self, loc):
         self.B.remove(self)
@@ -790,6 +789,10 @@ class Item(BeingItemBase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.inv = defaultdict(int)
+
+    def __str__(self):
+        print('in Item.__str__, self.char=', self.char)
+        return super().__str__()
 
     def __repr__(self):
         return f'<I: {self.char}>'
@@ -1550,7 +1553,6 @@ def editor(_map):
     blt.set("window: resizeable=true, size=80x25, cellsize=auto, title='Editor'; font: FreeMono.ttf, size=20")
     blt.color("white")
     blt.composition(True)
-    blt.set("U+E300: NotoEmoji-Regular.ttf, size=32x32, spacing=3x2, codepage=notocp.txt, align=top-left")  # GOOGLE
 
     blt.clear()
     Misc.is_game = 0
@@ -1600,6 +1602,8 @@ def editor(_map):
             B.put(k, loc)
         elif k == 'w':
             Item(B, Blocks.water, 'water', loc)
+        elif k == 'x':
+            Item(Blocks.hex, '', loc, B._map)
         elif k == 'B':
             B.put(Blocks.bricks, loc)
             brush = Blocks.bricks
@@ -1657,6 +1661,9 @@ def editor(_map):
         puts(73,1, tool)
         puts(0 if loc.x>20 else 35,
              0, str(loc))
+        # loc = Loc(x,loc.y)
+        # print("loc", loc)
+        puts(1, HEIGHT+2, blt_esc(str(B.get_all_obj(loc))))
         refresh()
         if written:
             puts(65,2, 'map written')
