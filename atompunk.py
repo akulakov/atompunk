@@ -3,7 +3,7 @@ from bearlibterminal import terminal as blt
 import os
 import sys
 import math
-from random import choice, randrange, random
+from random import choice, randrange
 from collections import defaultdict
 from textwrap import wrap
 from time import sleep
@@ -110,6 +110,8 @@ class ID(Enum):
 
 
 class Type(Enum):
+    door = auto()
+    roof = auto()
     door1 = auto()
     container = auto()
     blocking = auto()
@@ -194,7 +196,6 @@ class Talk:
         self.B.draw()
         x = min(self.loc.x, 60)
 
-        lst = []
         x = min(40, x)
         w = 78 - x
         lines = (len(txt) // w) + 4
@@ -371,9 +372,7 @@ def stats(castle=None, battle=False):
         move_str = f' | Move {move}/{n_moves}'
     s=''
     st = s + f'[Caps:{pl.caps}] {move_str} | {Misc.B._map}'
-    x = len(st)+2
     puts2(1, 0, blt_esc(st))
-    y = 1
     refresh()
 
 def status(msg):
@@ -532,10 +531,12 @@ class Board:
         self.B = [mkrow() for _ in range(HEIGHT)]
 
     def found_type_at(self, type, loc):
+        if not isinstance(type, SEQ_TYPES):
+            type = (type,)
         def get_obj(x):
-            return Objects.get_by_id(x) or x
+            return Objects.get(x) or x
         return any(
-            get_obj(x).type==type for x in self.get_all_obj(loc)
+            get_obj(x).type in type for x in self.get_all_obj(loc)
         )
 
     def get_all(self, loc):
@@ -584,8 +585,11 @@ class Board:
                         Item(Blocks.water, 'water', loc, type=Type.water, board_map=self._map)
 
                     elif char==Blocks.roof:
-                        Item(Blocks.roof, '', loc, self._map)
+                        Item(Blocks.roof, '', loc, self._map, type=Type.roof)
                         roofs.append(loc)
+
+                    elif char==Blocks.door:
+                        Item(Blocks.door, 'door', loc, self._map, type=Type.door)
 
                     elif char in (Blocks.tree1, Blocks.tree2):
                         col = rand_color(33, (60,255), (10,140))
@@ -602,19 +606,11 @@ class Board:
                         if for_editor:
                             self.put(char, loc)
 
-        self.handle_buildings(roofs)
-        return containers, doors, specials
-
-    def handle_buildings(self, roofs):
-        g = defaultdict(list)
+        hr = HandleRoof(self)
         for loc in roofs:
-            for nloc in self.neighbours(loc):
-                if B[nloc] == Blocks.roof:
-                    g[loc].append(nloc)
-        bld = []
-        for loc, nbr in g.items():
-            for b in bld:
-                if
+            hr.handle(loc)
+        self.buildings = hr.buildings
+        return containers, doors, specials
 
 
     def rect(self, a, b):
@@ -708,17 +704,30 @@ class Board:
 class HandleRoof:
     def __init__(self, B):
         self.B = B
+        self.seen = set()
+        self.buildings = []
+
+    def handle(self, loc):
+        if loc in self.seen: return
+        bld = self.find_connected_roof(loc)
+        inn = self.find_inner(bld)
+        print("bld", bld)
+        print("inn", inn)
+        fill = self.fill_roof(inn, bld)
+        self.buildings.append((bld, fill))
 
     def find_connected_roof(self, loc, bld=None, seen=None):
         seen = seen or set([loc])
         bld = bld or set([loc])
         B = self.B
+        print("loc", loc)
         for loc in B.neighbours(loc):
+            print("loc,b[loc]", loc,B[loc])
             if loc in seen:
                 continue
-            if B[loc] in (Blocks.roof, Blocks.door):
+            if B.found_type_at((Type.roof, Type.door), loc):
                 bld.add(loc)
-                find_connected_roof(B, loc, bld, seen)
+                self.find_connected_roof(loc, bld, seen)
             seen.add(loc)
         return bld
 
@@ -739,9 +748,9 @@ class HandleRoof:
         for loc in B.neighbours(loc):
             if loc in seen:
                 continue
-            if B[loc] not in (Blocks.roof, Blocks.door):
+            if B.found_type_at((Type.roof, Type.door), loc):
                 fill.add(loc)
-                fill_roof(B, loc, bld, fill, seen)
+                self.fill_roof(loc, bld, fill, seen)
             seen.add(loc)
         return fill
 
@@ -868,7 +877,6 @@ class BattleUI:
             winner.xp += loser.total_strength()//2
         for u in winner.live_party():
             u.hp = u.max_hp
-        loser.party = pad_none([], 6)
 
     def go(self, a, b):
         self._go(a,b)
@@ -915,7 +923,7 @@ class BattleUI:
             if not h.is_ai():
                 u.color = 'lighter blue'
                 blt_put_obj(u)
-                ok = handle_ui(u, hero=h)
+                ok = handle_ui(u)
                 u.color = None
                 if not ok:
                     return
@@ -1033,70 +1041,6 @@ class Being(BeingItemBase):
         print('talk to', being)
         if not yesno and not resp:
             Talk(self.B, being).talk()
-            return
-
-        loc = being.loc
-        conv = conv_str[being.id]
-        tree = conversations[being.id]
-        if isinstance(dialog, str):
-            dialog = [dialog]
-        x = min(loc.x, 60)
-        multichoice = 0
-
-        for m, txt in enumerate(dialog):
-            lst = []
-            if isinstance(txt, (list,tuple)):
-                multichoice = len(txt)
-                for n, t in enumerate(txt):
-                    lst.append(f'{n+1}) {t}')
-                txt = '\n'.join(lst)
-            x = min(40, x)
-            w = 78 - x
-            if yesno:
-                txt += ' [[Y/N]]'
-            lines = (len(txt) // w) + 4
-            txt_lines = wrap(txt, w)
-            txt = '\n'.join(txt_lines)
-            offset_y = lines if loc.y<8 else -lines
-
-            y = max(0, loc.y+offset_y)
-            W = max(len(l) for l in txt_lines)
-            blt.clear_area(x+1, y+1, W, len(txt_lines))
-            puts(x+1,y+1, txt)
-            refresh()
-
-            if yesno:
-                # TODO in some one-time dialogs, may need to detect 'no' explicitly
-                k = get_and_parse_key()
-                return k in 'Yy'
-
-            elif multichoice:
-                for _ in range(2):
-                    k = get_and_parse_key()
-                    try:
-                        k=int(k)
-                    except ValueError:
-                        k = 0
-                    if k in range(1, multichoice+1):
-                        return k
-
-            if resp and m==len(dialog)-1:
-                i=''
-                puts(0,1, '> ')
-                refresh()
-                for _ in range(10):
-                    k = get_and_parse_key()
-                    if k==' ': break
-                    i+=k
-                    puts(0,1, '> '+i)
-                    refresh()
-                return i
-
-            refresh()
-            k=None
-            while k!=' ':
-                k = get_and_parse_key()
-            self.B.draw()
 
 
     def _move(self, dir):
@@ -1388,6 +1332,9 @@ class Player(PartyMixin, Being):
 class IndependentParty(Player):
     pass
 
+class Bullet(Item):
+    pass
+
 class Shooter(Being):
     strength = 6
     defense = 3
@@ -1507,14 +1454,10 @@ def handle_ui(unit, battle=False):
     elif k == '.':
         pass
     elif k == 'f':
-        if isinstance(unit, Archer):
-            unit.fire(B, hero)
+        unit.fire(B, player)
     elif k == 'o':
         name = prompt()
-        Misc.hero, B = Saves().load(name)
-    elif k == 's':
-        if hero:
-            hero.cast_spell(B)
+        Misc.player, B = Saves().load(name)
     elif k == 'a':
         if Misc.B == Boards.b_battle:
             return AUTO_BATTLE
@@ -1562,8 +1505,6 @@ def handle_ui(unit, battle=False):
 
     elif k == 'E':
         B.display(str(B.get_all(unit.loc)))
-    elif k == 'm':
-        manage_castles()
 
     elif k == 'i':
         txt = []
@@ -1627,6 +1568,11 @@ def editor(_map):
             brush = Blocks.blank
         elif k == 'r':
             brush = Blocks.rock
+        elif k == 'R':
+            brush = Blocks.roof
+            B.put(Blocks.roof, loc)
+        elif k == '+':
+            B.put(k, loc)
         elif k and k in '0123456789':
             B.put(k, loc)
         elif k == 'w':
