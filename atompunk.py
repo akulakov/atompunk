@@ -245,6 +245,7 @@ class Blocks:
     house_c2 = '\u2518'
     hex = '\u26e2'
     roof = hex
+    door = '+'
 
 
 BLOCKING = [Blocks.rock, Type.door1, Type.blocking]
@@ -613,7 +614,7 @@ class Board:
         bld = []
         for loc, nbr in g.items():
             for b in bld:
-                if 
+                if
 
 
     def rect(self, a, b):
@@ -704,17 +705,45 @@ class Board:
         return False
 
 
-def find_connected_roofs(B, loc, bld=None, seen=None):
-    seen = seen or set([loc])
-    bld = bld or set([loc])
-    for loc in B.neighbours(loc):
-        if loc in seen:
-            continue
-        if B[loc]==Blocks.roof:
-            bld.add(loc)
-            find_connected_roofs(B, loc, bld, seen)
-        seen.add(loc)
-    return bld
+class HandleRoof:
+    def __init__(self, B):
+        self.B = B
+
+    def find_connected_roof(self, loc, bld=None, seen=None):
+        seen = seen or set([loc])
+        bld = bld or set([loc])
+        B = self.B
+        for loc in B.neighbours(loc):
+            if loc in seen:
+                continue
+            if B[loc] in (Blocks.roof, Blocks.door):
+                bld.add(loc)
+                find_connected_roof(B, loc, bld, seen)
+            seen.add(loc)
+        return bld
+
+    def find_inner(self, bld, seen=None):
+        min_x, max_x = min(l.x for l in bld), max(l.x for l in bld)
+        min_y, max_y = min(l.y for l in bld), max(l.y for l in bld)
+        for l in bld:
+            nbr = self.B.neighbours(l)
+            for n in nbr:
+                if min_x<n.x<max_x or min_y<n.y<max_y:
+                    break
+            return n
+
+    def fill_roof(self, loc, bld, fill=None, seen=None):
+        B = self.B
+        seen = seen or set([loc])
+        fill = fill or set([loc])
+        for loc in B.neighbours(loc):
+            if loc in seen:
+                continue
+            if B[loc] not in (Blocks.roof, Blocks.door):
+                fill.add(loc)
+                fill_roof(B, loc, bld, fill, seen)
+            seen.add(loc)
+        return fill
 
 
 class Boards:
