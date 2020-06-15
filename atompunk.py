@@ -107,6 +107,7 @@ Objects = ObjectsClass()
 class ID(Enum):
     player = auto()
     elder = auto()
+    banize = auto()
 
 
 class Type(Enum):
@@ -289,12 +290,13 @@ def debug(*args):
     debug_log.flush()
 print=debug
 
-def blt_put_obj(obj, loc=None):
+def blt_put_obj(obj, loc=None, do_refresh=True):
     x,y=loc or obj.loc
     x = x*2 +(0 if y%2==0 else 1)
     blt.clear_area(x,y,1,1)
     puts(x, y, obj)
-    refresh()
+    if do_refresh:
+        refresh()
 
 def dist(a,b):
     a = getattr(a,'loc',a)
@@ -362,7 +364,7 @@ def board_setup():
 
 
 
-def stats(castle=None, battle=False):
+def stats(battle=False):
     pl = Misc.player
     if not pl: return
     move_str = ''
@@ -467,6 +469,7 @@ class Board:
                 yield Loc(x,y), cell
 
     def display(self, txt):
+        if not txt: return
         w = max(len(l) for l in txt) + 1
         X,Y = 5, 2
         for y, ln in enumerate(txt):
@@ -554,10 +557,13 @@ class Board:
                 if not isinstance(n, str)
                ]
 
+    def get_obj(self, loc):
+        return last(self.get_all_obj(loc))
+
     def get_being(self, loc):
         return first(o for o in self.get_all_obj(loc) if isinstance(o, Being) and o.alive)
 
-    def load_map(self, map_num, for_editor=0, castle=None):
+    def load_map(self, map_num, for_editor=0):
         _map = open(f'maps/{map_num}.map').readlines()
         self.containers = containers = []
         self.doors = doors = []
@@ -574,10 +580,6 @@ class Board:
                     if char==BL.rock:
                         BlockingItem(Blocks.rock, '', loc, self._map)
 
-                    elif char==Blocks.door:
-                        d = Item(Blocks.door, 'door', loc, self._map)
-                        doors.append(d)
-
                     elif char==Blocks.rock3:
                         BlockingItem(Blocks.rock3, 'rock', loc, board_map=self._map)
 
@@ -589,7 +591,8 @@ class Board:
                         roofs.append(loc)
 
                     elif char==Blocks.door:
-                        Item(Blocks.door, 'door', loc, self._map, type=Type.door)
+                        d = Item(Blocks.door, 'door', loc, self._map, type=Type.door)
+                        doors.append(d)
 
                     elif char in (Blocks.tree1, Blocks.tree2):
                         col = rand_color(33, (60,255), (10,140))
@@ -609,7 +612,6 @@ class Board:
         hr = HandleRoof(self)
         for loc in roofs:
             hr.handle(loc)
-        self.buildings = hr.buildings
         return containers, doors, specials
 
 
@@ -637,29 +639,38 @@ class Board:
         x = int(round(x/2))
         return Loc(x,y)
 
-    def draw(self, battle=False, castle=None):
+    def draw(self, battle=False, editor=False):
         blt.clear()
         blt.color("white")
+        all_fill = set()    # inside buildings
+        if not editor:
+            for bld, fill, door in self.buildings:
+                # check in `bld` here because door is part of `bld` and we want to reveal when standing in the doorway
+                fill_loc = set(o.loc for o in fill)
+                bld_loc = set(o.loc for o in bld)
+                if Misc.player and Misc.player.loc not in fill_loc|bld_loc:
+                    for obj in fill:
+                        blt_put_obj(obj, do_refresh=0)
+                        all_fill.add(tuple(obj.loc))
+
         for y, row in enumerate(self.B):
             for x, cell in enumerate(row):
+                if (x,y) in all_fill:
+                    continue
                 # tricky bug: if an 'invisible' item put somewhere, then a being moves on top of it, it's drawn, but
                 # when it's moved out, the invisible item is drawn, but being an empty string, it doesn't draw over the
                 # being's char, so the 'image' of the being remains there, even after being moved away.
                 cell = [c for c in cell if getattr(c,'char',None)!='']
                 a = last(cell)
-                x*=2
-                if y%2==1:
-                    x+=1
-                # if isinstance(a, str):
-                    # puts(x,y,a)
+                x,y = loc_to_scr(x, y)
                 if isinstance(a, ID):
                     a = Objects[a]
                 puts(x,y,a)
 
-        for bld in self.buildings:
-            if Misc.player.loc not in set(bld):
-                for loc in bld:
-                    puts(loc.x, loc.y, Blocks.rock)
+        if not editor:
+            for bld, fill, door in self.buildings:
+                for obj in bld:
+                    blt_put_obj(obj, do_refresh=0)
 
         for y,x,txt in self.labels:
             puts(x,y,txt)
@@ -700,6 +711,13 @@ class Board:
                 return True
         return False
 
+def loc_to_scr(x, y=None):
+    if isinstance(x,Loc):
+        x, y = x
+    x*=2
+    if y%2==1:
+        x+=1
+    return Loc(x,y)
 
 class HandleRoof:
     def __init__(self, B):
@@ -709,26 +727,31 @@ class HandleRoof:
 
     def handle(self, loc):
         if loc in self.seen: return
+        self.seen.add(loc)
         bld = self.find_connected_roof(loc)
+        door = first(l for l in bld if self.B.get_obj(l).type==Type.door)
         inn = self.find_inner(bld)
-        print("bld", bld)
-        print("inn", inn)
         fill = self.fill_roof(inn, bld)
-        self.buildings.append((bld, fill))
+        bld = [l for l in bld if l!=door]
 
-    def find_connected_roof(self, loc, bld=None, seen=None):
-        seen = seen or set([loc])
+        def col():
+            return rand_color((30,40),(30,40),(30,40))
+
+        bld = [Item(Blocks.roof, '', l, self.B._map, type=Type.roof, color=col(), put=False) for l in bld]
+        fill = [Item(Blocks.roof, '', l, self.B._map, type=Type.roof, color=col(), put=False) for l in fill]
+        self.B.buildings.append((bld, fill, door))
+
+    def find_connected_roof(self, loc, bld=None):
         bld = bld or set([loc])
         B = self.B
-        print("loc", loc)
         for loc in B.neighbours(loc):
-            print("loc,b[loc]", loc,B[loc])
-            if loc in seen:
+            if loc in self.seen:
                 continue
             if B.found_type_at((Type.roof, Type.door), loc):
                 bld.add(loc)
-                self.find_connected_roof(loc, bld, seen)
-            seen.add(loc)
+                self.seen.add(loc)
+                self.find_connected_roof(loc, bld)
+            self.seen.add(loc)
         return bld
 
     def find_inner(self, bld, seen=None):
@@ -737,7 +760,7 @@ class HandleRoof:
         for l in bld:
             nbr = self.B.neighbours(l)
             for n in nbr:
-                if min_x<n.x<max_x or min_y<n.y<max_y:
+                if n not in bld and (min_x<n.x<max_x and min_y<n.y<max_y):
                     break
             return n
 
@@ -745,13 +768,14 @@ class HandleRoof:
         B = self.B
         seen = seen or set([loc])
         fill = fill or set([loc])
-        for loc in B.neighbours(loc):
-            if loc in seen:
+        for nloc in B.neighbours(loc):
+            if nloc in seen:
                 continue
-            if B.found_type_at((Type.roof, Type.door), loc):
-                fill.add(loc)
-                self.fill_roof(loc, bld, fill, seen)
-            seen.add(loc)
+            if not B.found_type_at((Type.roof, Type.door), nloc):
+                fill.add(nloc)
+                seen.add(nloc)
+                self.fill_roof(nloc, bld, fill, seen)
+            seen.add(nloc)
         return fill
 
 
@@ -764,105 +788,30 @@ class Boards:
     def get_by_loc(loc):
         return board_grid[loc.y][loc.x]
 
-class BeingItemBase:
-    is_player = 0
-    player = None
-    state = 0
-    color = None
-    _str = None
-    id = None
 
-    def __init__(self, char, name, loc=None, board_map=None, put=True, id=None, type=None, color=None, n=0):
-        self.char, self.name, self.loc, self.board_map, self.id, self.type, self.color, self.n = \
-                char, name, loc, board_map, id, type, color, n
-        if id:
-            Objects[id] = self
-        if board_map and put:
-            self.B.put(self)
+class Skills(Enum):
+    small_guns = auto()
+    big_guns = auto()
+    energy_weapons = auto()
+    melee_weapons = auto()
+    unarmed = auto()
+    throwing = auto()
+    first_aid = auto()
+    doctor = auto()
+    sneak = auto()
+    lockpick = auto()
+    steal = auto()
+    traps = auto()
+    science = auto()
+    repair = auto()
+    speech = auto()
+    barter = auto()
+    gambling = auto()
+    outdoorsman = auto()
 
-    def __str__(self):
-        # c=self.char
-        # if isinstance(c, int):
-        #     c = '[U+{}]'.format(hex(c)[2:])
-        # return c
-        return self.char
-
-    def tele(self, loc):
-        self.B.remove(self)
-        self.put(loc)
-
-    def put(self, loc):
-        self.loc = loc
-        B=self.B
-        B.put(self)
-
-    def has(self, id):
-        return self.inv.get(id)
-
-    def remove1(self, id):
-        self.inv[id] -= 1
-
-    def add1(self, id, n=1):
-        self.inv[id] += n
-
-    def move_to_board(self, _map, specials_ind=None, loc=None):
-        to_B = getattr(Boards, 'b_'+_map)
-        if specials_ind is not None:
-            loc = to_B.specials[specials_ind]
-        self.B.remove(self)
-        self.loc = loc
-        to_B.put(self)
-        self.board_map = to_B._map
-        return to_B
-
-    @property
-    def B(self):
-        if self.board_map:
-            return getattr(Boards, 'b_'+self.board_map)
-
-
-class Item(BeingItemBase):
-    board_map = None
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.inv = defaultdict(int)
-
-    def __str__(self):
-        print('in Item.__str__, self.char=', self.char)
-        return super().__str__()
-
-    def __repr__(self):
-        return f'<I: {self.char}>'
-
-    def move(self, dir, n=1):
-        my,mx = dict(h=(0,-1), l=(0,1), y=(-1,-1), u=(-1,1), b=(1,-1), n=(1,1))[dir]
-        if mx==1 and my and self.loc.y%2==0:
-            mx=0
-        if mx==-1 and my and self.loc.y%2==1:
-            mx=0
-        m = my,mx
-        for _ in range(n):
-            new = self.loc.mod(m[1],m[0])
-            self.B.remove(self)
-            self.loc = new
-            self.B.put(self)
-
-class Knife(Item):
-    char = Blocks.knife
-    type = Type.knife
-
-class BlockingItem(Item):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.type = Type.blocking
-
-class PartyMixin:
-    def total_strength(self):
-        return sum(u.hp for u in self.live_party())
-
-    def live_party(self):
-        return list(u for u in filter(None, self.party) if u.alive)
+class LoadBoard:
+    def __init__(self, new, b_new):
+        self.new, self.b_new = new, b_new
 
 
 class BattleUI:
@@ -959,34 +908,109 @@ class BattleUI:
                         break
 
 
-class Skills(Enum):
-    small_guns = auto()
-    big_guns = auto()
-    energy_weapons = auto()
-    melee_weapons = auto()
-    unarmed = auto()
-    throwing = auto()
-    first_aid = auto()
-    doctor = auto()
-    sneak = auto()
-    lockpick = auto()
-    steal = auto()
-    traps = auto()
-    science = auto()
-    repair = auto()
-    speech = auto()
-    barter = auto()
-    gambling = auto()
-    outdoorsman = auto()
+class BeingItemBase:
+    is_player = 0
+    player = None
+    state = 0
+    color = None
+    _str = None
+    id = None
 
-class LoadBoard:
-    def __init__(self, new, b_new):
-        self.new, self.b_new = new, b_new
+    def __init__(self, char, name, loc=None, board_map=None, put=True, id=None, type=None, color=None, n=0):
+        self.char, self.name, self.loc, self.board_map, self.id, self.type, self.color, self.n = \
+                char, name, loc, board_map, id, type, color, n
+        if id:
+            Objects[id] = self
+        if board_map and put:
+            self.B.put(self)
+
+    def __str__(self):
+        return self.char
+
+    def tele(self, loc):
+        self.B.remove(self)
+        self.put(loc)
+
+    def put(self, loc):
+        self.loc = loc
+        B=self.B
+        B.put(self)
+
+    def has(self, id):
+        return self.inv.get(id)
+
+    def remove1(self, id):
+        self.inv[id] -= 1
+
+    def add1(self, id, n=1):
+        self.inv[id] += n
+
+    def move_to_board(self, _map, specials_ind=None, loc=None):
+        to_B = getattr(Boards, 'b_'+_map)
+        if specials_ind is not None:
+            loc = to_B.specials[specials_ind]
+        self.B.remove(self)
+        self.loc = loc
+        to_B.put(self)
+        self.board_map = to_B._map
+        return to_B
+
+    @property
+    def B(self):
+        if self.board_map:
+            return getattr(Boards, 'b_'+self.board_map)
+
+
+class Item(BeingItemBase):
+    board_map = None
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.inv = defaultdict(int)
+
+    def __str__(self):
+        print('in Item.__str__, self.char=', self.char)
+        return super().__str__()
+
+    def __repr__(self):
+        return f'<I: {self.char}>'
+
+    def move(self, dir, n=1):
+        my,mx = dict(h=(0,-1), l=(0,1), y=(-1,-1), u=(-1,1), b=(1,-1), n=(1,1))[dir]
+        if mx==1 and my and self.loc.y%2==0:
+            mx=0
+        if mx==-1 and my and self.loc.y%2==1:
+            mx=0
+        m = my,mx
+        for _ in range(n):
+            new = self.loc.mod(m[1],m[0])
+            self.B.remove(self)
+            self.loc = new
+            self.B.put(self)
+
+class Knife(Item):
+    char = Blocks.knife
+    type = Type.knife
+
+class BlockingItem(Item):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.type = Type.blocking
+
+class PartyMixin:
+    def total_strength(self):
+        return sum(u.hp for u in self.live_party())
+
+    def live_party(self):
+        return list(u for u in filter(None, self.party) if u.alive)
+
 
 class Being(BeingItemBase):
     hp = 1
     max_hp = 1
     is_being = 1
+    is_player = False
+    speed = 1
     type = None
     char = None
     n_moves = None
@@ -1201,8 +1225,8 @@ class Being(BeingItemBase):
         if is_near('elder'):
             self.talk(Objects.elder)
             self.caps += 150
-            Item('f', 'Vault 13 Flask', id=ID.vault13_flask)
-            self.inv[ID.vault13_flask] += 1
+            Item('f', 'Vault 13 Flask', type=Type.vault13_flask)
+            self.inv[Type.vault13_flask] += 1
 
     def use(self):
         ascii_letters = string.ascii_letters
@@ -1297,13 +1321,15 @@ class Pistol(RangedWeapon):
         blt_put_obj(being, loc)
 
 
-class Player(PartyMixin, Being):
+class XPLevelMixin:
     xp = 0
+    level = 1
+    level_tiers = enumerate(())
+
+class Player(PartyMixin, XPLevelMixin, Being):
     speed = 5
     alive = 1
-    level = 1
     type = Type.player
-    mana = 20
     is_player = True
     level_tiers = enumerate((500,2000,5000,10000,15000,25000,50000,100000,150000))
     char = Blocks.player_l
@@ -1311,7 +1337,7 @@ class Player(PartyMixin, Being):
 
     def __init__(self, *args, player=None, party=None, spells=None, **kwargs ):
         super().__init__(*args, **kwargs)
-        self.party = []
+        self.party = [ID.banize]
 
     def __str__(self):
         return super().__str__()
@@ -1328,6 +1354,14 @@ class Player(PartyMixin, Being):
             if xp > self.xp:
                 break
             self.level = lev
+
+class NPC(XPLevelMixin, Being):
+    pass
+
+class Banize(NPC):
+    speed = 4
+    id = ID.banize
+
 
 class IndependentParty(Player):
     pass
@@ -1407,6 +1441,7 @@ def main(load_game):
     ok=1
     board_setup()
     player = Misc.player = Player(Boards.b_1.specials[1], board_map='1', id=ID.player)
+    Banize(Boards.b_1.specials[1].mod_r(2), board_map='1')
     Misc.B.draw()
 
     while ok:
@@ -1538,7 +1573,7 @@ def editor(_map):
     B = Board(None, _map)
     setattr(Boards, 'b_'+_map, B)
     B.load_map(_map, 1)
-    B.draw()
+    B.draw(editor=1)
 
     while 1:
         k = get_and_parse_key()
@@ -1621,7 +1656,7 @@ def editor(_map):
                     fp.write('\n')
             written=1
 
-        B.draw()
+        B.draw(editor=1)
         x = loc.x*2 + (0 if loc.y%2==0 else 1)
         blt.clear_area(x,loc.y,1,1)
         puts(x, loc.y, Blocks.circle3)
