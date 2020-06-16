@@ -168,6 +168,8 @@ class Talk:
         self.display(txt, False)
         for _ in range(3):
             k = get_and_parse_key()
+            if k=='ESCAPE':
+                return
             try:
                 k=int(k)
             except ValueError:
@@ -183,6 +185,8 @@ class Talk:
         if isinstance(conv, SEQ_TYPES):
             self.choice_stack.append(conv)
             i = self.choose(conv)
+            if i is None:
+                return
             if i:
                 self.current = conv[i]
             self.ind = 1
@@ -250,9 +254,11 @@ class Blocks:
     roof = hex
     door = '+'
     banize = player_f
+    location = '\u25f0'
 
 
 BLOCKING = [Blocks.rock, Type.door1, Type.blocking, Type.roof]
+
 
 class Misc:
     status = []
@@ -630,6 +636,10 @@ class Board:
         elif a.y==b.y:
             return [Loc(x, a.y) for x in range(a.x, b.x+1)]
 
+    def board_map(self):
+        self.load_map('map')
+        MapLocation(self.specials[1], loc_map='1')
+
     def board_1(self):
         self.load_map('1')
         Elder(self.specials[2], '1')
@@ -994,6 +1004,13 @@ class Item(BeingItemBase):
             self.B.remove(self)
             self.loc = new
             self.B.put(self)
+
+class MapLocation(Item):
+    char = Blocks.location
+
+    def __init__(self, *args, loc_map=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.loc_map = loc_map
 
 class Knife(Item):
     char = Blocks.knife
@@ -1455,9 +1472,12 @@ class Saves:
         return B.get_all(player.loc), name
 
 def board_setup():
-    Boards.b_1 = Board(Loc(0,0), '1')
+    Boards.map = Board(Loc(0,0), 'map')
+    Boards.map.board_map()
+
+    Boards.b_1 = Board(Loc(0,2), '1')
     Boards.b_1.board_1()
-    Boards.b_2 = Board(Loc(1,0), '2')
+    Boards.b_2 = Board(Loc(1,2), '2')
     Boards.b_2.board_2()
 
     # Boards.b_3 = Board(Loc(0,1), '3')
@@ -1466,6 +1486,8 @@ def board_setup():
     # Boards.b_4.board_4()
 
     board_grid[:] = [
+        ['map', None, None],
+        [None, None, None],
         ['1', '2', None],
         # ['3', '4', None],
     ]
