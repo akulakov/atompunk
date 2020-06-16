@@ -14,7 +14,7 @@ from copy import copy  #, deepcopy
 from enum import Enum, auto
 
 """
-HoS
+Atom Punk
 """
 
 HEIGHT = 16
@@ -347,23 +347,6 @@ def parsekey(k):
 def get_mouse_pos():
     return blt.state(blt.TK_MOUSE_X), blt.state(blt.TK_MOUSE_Y)
 
-def board_setup():
-    Boards.b_1 = Board(Loc(0,0), '1')
-    Boards.b_1.board_1()
-    # Boards.b_2 = Board(Loc(1,0), '2')
-    # Boards.b_2.board_2()
-
-    # Boards.b_3 = Board(Loc(0,1), '3')
-    # Boards.b_3.board_3()
-    # Boards.b_4 = Board(Loc(1,1), '4')
-    # Boards.b_4.board_4()
-
-    board_grid[:] = [
-        ['1', '2', None],
-        # ['3', '4', None],
-    ]
-    Misc.B = Boards.b_1
-
 
 
 def stats(battle=False):
@@ -470,6 +453,13 @@ class Board:
             for x, cell in enumerate(row):
                 yield Loc(x,y), cell
 
+    def find_empty_neighbour(self, loc):
+        for l in self.neighbours(loc):
+            if self[l] is Blocks.blank:
+                return l
+            else:
+                return find_empty_neighbour(l)
+
     def display(self, txt):
         if not txt: return
         w = max(len(l) for l in txt) + 1
@@ -535,6 +525,8 @@ class Board:
             loc = choice(list(self))[0]
             if self[loc] is Blocks.blank:
                 return loc
+
+
 
     def random_rocks(self, n=1):
         for _ in range(n):
@@ -641,6 +633,9 @@ class Board:
     def board_1(self):
         self.load_map('1')
         Elder(self.specials[2], '1')
+
+    def board_2(self):
+        self.load_map('2')
 
     def screen_loc_to_map(self, loc):
         x,y=loc
@@ -919,7 +914,6 @@ class BattleUI:
                         blt_put_obj(u)
                         break
 
-
 class BeingItemBase:
     is_player = 0
     player = None
@@ -965,6 +959,8 @@ class BeingItemBase:
         self.loc = loc
         to_B.put(self)
         self.board_map = to_B._map
+        for id in (self.party or []):
+            Objects[id].move_to_board(_map, loc=to_B.find_empty_neighbour(loc))
         return to_B
 
     @property
@@ -1009,6 +1005,8 @@ class BlockingItem(Item):
         self.type = Type.blocking
 
 class PartyMixin:
+    party = None
+
     def total_strength(self):
         return sum(u.hp for u in self.live_party())
 
@@ -1021,11 +1019,17 @@ class PartyMixin:
                 path = self.path.get(player.id) or self.B.find_path(self.loc, player.loc)
                 print("path", path)
                 if path:
-                    self.move(loc=first(path))
+                    rv = self.move(loc=first(path))
+                    if isinstance(rv, LoadBoard):
+                        handle_load_board(unit, rv)
                     self.path[player.id] = path[1:]
         else:
             self.path = {}
 
+def handle_load_board(unit, rv):
+        loc = rv.b_new
+        if chk_b_oob(loc) and board_grid[loc.y][loc.x]:
+            return unit.move_to_board(Boards.get_by_loc(loc), loc=rv.new)
 
 class Being(BeingItemBase):
     hp = 1
@@ -1450,6 +1454,23 @@ class Saves:
         sh.close()
         return B.get_all(player.loc), name
 
+def board_setup():
+    Boards.b_1 = Board(Loc(0,0), '1')
+    Boards.b_1.board_1()
+    Boards.b_2 = Board(Loc(1,0), '2')
+    Boards.b_2.board_2()
+
+    # Boards.b_3 = Board(Loc(0,1), '3')
+    # Boards.b_3.board_3()
+    # Boards.b_4 = Board(Loc(1,1), '4')
+    # Boards.b_4.board_4()
+
+    board_grid[:] = [
+        ['1', '2', None],
+        # ['3', '4', None],
+    ]
+    Misc.B = Boards.b_1
+
 def main(load_game):
     blt.open()
     blt.set(f"window: resizeable=true, size=80x25, cellsize=auto, title='Atom Punk'; font: FreeMono.ttf, size={SIZE}")
@@ -1507,9 +1528,8 @@ def handle_ui(unit, battle=False):
 
         unit.last_dir = k
         if isinstance(rv, LoadBoard):
-            loc = rv.b_new
-            if chk_b_oob(loc) and board_grid[loc.y][loc.x]:
-                Misc.B = unit.move_to_board(Boards.get_by_loc(loc), loc=rv.new)
+            B = Misc.B = handle_load_board(unit, rv)
+            B.draw()
         stats()
 
     elif k == '.':
