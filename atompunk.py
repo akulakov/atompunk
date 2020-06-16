@@ -250,7 +250,7 @@ class Blocks:
     door = '+'
 
 
-BLOCKING = [Blocks.rock, Type.door1, Type.blocking]
+BLOCKING = [Blocks.rock, Type.door1, Type.blocking, Type.roof]
 
 class Misc:
     status = []
@@ -639,7 +639,7 @@ class Board:
         x = int(round(x/2))
         return Loc(x,y)
 
-    def draw(self, battle=False, editor=False):
+    def draw(self, battle=False, editor=False, initial=False):
         blt.clear()
         blt.color("white")
         all_fill = set()    # inside buildings
@@ -652,6 +652,8 @@ class Board:
                     for obj in fill:
                         blt_put_obj(obj, do_refresh=0)
                         all_fill.add(tuple(obj.loc))
+                        if initial:
+                            refresh()
 
         for y, row in enumerate(self.B):
             for x, cell in enumerate(row):
@@ -1442,7 +1444,7 @@ def main(load_game):
     board_setup()
     player = Misc.player = Player(Boards.b_1.specials[1], board_map='1', id=ID.player)
     Banize(Boards.b_1.specials[1].mod_r(2), board_map='1')
-    Misc.B.draw()
+    Misc.B.draw(initial=1)
 
     while ok:
         ok = handle_ui(Misc.player)
