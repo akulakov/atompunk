@@ -9,6 +9,7 @@ from textwrap import wrap
 from time import sleep
 import string
 import shelve
+import heapq
 from copy import copy  #, deepcopy
 from enum import Enum, auto
 
@@ -502,51 +503,32 @@ class Board:
         return first(p)
 
     def find_path(self, src, tgt):
-        import heapq
         self.gen_graph(tgt)
         frontier = []
-        heapq.heappush(frontier, start)
+        heapq.heappush(frontier, (0, id(src), src))
         came_from = {}
         cost_so_far = {}
-        came_from[start] = None
-        cost_so_far[start] = 0
+        came_from[src] = None
+        cost_so_far[src] = 0
 
         while frontier:
            current = heapq.heappop(frontier)
 
-           if current == goal:
+           if current[2] == tgt:
               break
-           for next in graph.neighbors(current):
-              new_cost = cost_so_far[current] + graph.cost(current, next)
+           for next in self.g[current[2]]:
+              new_cost = cost_so_far[current[2]] + dist(current[2], next)
               if next not in cost_so_far or new_cost < cost_so_far[next]:
                  cost_so_far[next] = new_cost
-                 priority = new_cost + heuristic(goal, next)
-                 frontier.put(next, priority)
-                 came_from[next] = current
-
-    def find_path(self, src, tgt):
-        """Greedy"""
-        self.gen_graph(tgt)
-        print("self.g", self.g)
-        cur = src
-        path = []
-        visited = set([src])
-        print("src,tgt", src,tgt)
-        while 1:
-            nbr = [n for n in self.g[cur] if n not in visited]
-            print("nbr", nbr)
-            print(sorted([(dist(n,tgt), id(n), n) for n in nbr]))
-            next = first(sorted([(dist(n,tgt), id(n), n) for n in nbr]))
-            if not next:
-                break
-            next = next[2]
-            path.append(next)
-            visited.add(next)
-            cur = next
-            if cur == tgt:
-                return path
-        return []
-
+                 priority = new_cost + dist(tgt, next)
+                 heapq.heappush(frontier, (priority, id(next), next))
+                 came_from[next] = current[2]
+        l = [tgt]
+        n = tgt
+        while n!=src:
+            n = came_from[n]
+            l.append(n)
+        return list(reversed(l))
 
     def random_empty(self):
         while 1:
