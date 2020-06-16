@@ -3,7 +3,7 @@ from bearlibterminal import terminal as blt
 import os
 import sys
 import math
-from random import choice, randrange
+from random import choice, randrange, random
 from collections import defaultdict
 from textwrap import wrap
 from time import sleep
@@ -248,6 +248,7 @@ class Blocks:
     hex = '\u26e2'
     roof = hex
     door = '+'
+    banize = player_f
 
 
 BLOCKING = [Blocks.rock, Type.door1, Type.blocking, Type.roof]
@@ -501,13 +502,40 @@ class Board:
         return first(p)
 
     def find_path(self, src, tgt):
+        import heapq
+        self.gen_graph(tgt)
+        frontier = []
+        heapq.heappush(frontier, start)
+        came_from = {}
+        cost_so_far = {}
+        came_from[start] = None
+        cost_so_far[start] = 0
+
+        while frontier:
+           current = heapq.heappop(frontier)
+
+           if current == goal:
+              break
+           for next in graph.neighbors(current):
+              new_cost = cost_so_far[current] + graph.cost(current, next)
+              if next not in cost_so_far or new_cost < cost_so_far[next]:
+                 cost_so_far[next] = new_cost
+                 priority = new_cost + heuristic(goal, next)
+                 frontier.put(next, priority)
+                 came_from[next] = current
+
+    def find_path(self, src, tgt):
         """Greedy"""
         self.gen_graph(tgt)
+        print("self.g", self.g)
         cur = src
         path = []
         visited = set([src])
+        print("src,tgt", src,tgt)
         while 1:
             nbr = [n for n in self.g[cur] if n not in visited]
+            print("nbr", nbr)
+            print(sorted([(dist(n,tgt), id(n), n) for n in nbr]))
             next = first(sorted([(dist(n,tgt), id(n), n) for n in nbr]))
             if not next:
                 break
@@ -971,7 +999,6 @@ class Item(BeingItemBase):
         self.inv = defaultdict(int)
 
     def __str__(self):
-        print('in Item.__str__, self.char=', self.char)
         return super().__str__()
 
     def __repr__(self):
@@ -1005,6 +1032,17 @@ class PartyMixin:
 
     def live_party(self):
         return list(u for u in filter(None, self.party) if u.alive)
+
+    def party_move(self, player):
+        if dist(self, player) > 6:
+            if random() > 0.05:
+                path = self.path.get(player.id) or self.B.find_path(self.loc, player.loc)
+                print("path", path)
+                if path:
+                    self.move(loc=first(path))
+                    self.path[player.id] = path[1:]
+        else:
+            self.path = {}
 
 
 class Being(BeingItemBase):
@@ -1357,12 +1395,13 @@ class Player(PartyMixin, XPLevelMixin, Being):
                 break
             self.level = lev
 
-class NPC(XPLevelMixin, Being):
+class NPC(PartyMixin, XPLevelMixin, Being):
     pass
 
 class Banize(NPC):
     speed = 4
     id = ID.banize
+    char = Blocks.banize
 
 
 class IndependentParty(Player):
@@ -1443,11 +1482,14 @@ def main(load_game):
     ok=1
     board_setup()
     player = Misc.player = Player(Boards.b_1.specials[1], board_map='1', id=ID.player)
-    Banize(Boards.b_1.specials[1].mod_r(2), board_map='1')
+    Banize(Boards.b_1.specials[1].mod_r(10), board_map='1')
     Misc.B.draw(initial=1)
 
     while ok:
-        ok = handle_ui(Misc.player)
+        ok = handle_ui(player)
+        for u in player.party:
+            u = Objects[u]
+            u.party_move(player)
         if ok=='q': return
         if ok==END_MOVE:
             blt_put_obj(player)
@@ -1674,7 +1716,6 @@ def editor(_map):
         puts(0 if loc.x>20 else 35,
              0, str(loc))
         # loc = Loc(x,loc.y)
-        # print("loc", loc)
         puts(1, HEIGHT+2, blt_esc(str(B.get_all_obj(loc))))
         refresh()
         if written:
