@@ -110,6 +110,8 @@ class ID(Enum):
     elder = auto()
     banize = auto()
 
+    arroyo_map_loc = auto()
+
 
 class Type(Enum):
     door = auto()
@@ -255,6 +257,7 @@ class Blocks:
     door = '+'
     banize = player_f
     location = '\u25f0'
+    party = '\u25ce'
 
 
 BLOCKING = [Blocks.rock, Type.door1, Type.blocking, Type.roof]
@@ -638,7 +641,8 @@ class Board:
 
     def board_map(self):
         self.load_map('map')
-        MapLocation(self.specials[1], loc_map='1')
+        MapLocation('Arroyo', self.specials[1], loc_map='1', id=ID.arroyo_map_loc)
+        # Item(char, '', loc, self._map)
 
     def board_1(self):
         self.load_map('1')
@@ -932,9 +936,12 @@ class BeingItemBase:
     _str = None
     id = None
 
-    def __init__(self, char, name, loc=None, board_map=None, put=True, id=None, type=None, color=None, n=0):
-        self.char, self.name, self.loc, self.board_map, self.id, self.type, self.color, self.n = \
-                char, name, loc, board_map, id, type, color, n
+    def __init__(self, char=None, name=None, loc=None, board_map=None, put=True, id=None, type=None, color=None, n=0):
+        print("char,name,loc,board_map", char,name,loc,board_map)
+        self.name, self.loc, self.board_map, self.id, self.type, self.color, self.n = \
+                name, loc, board_map, id, type, color, n
+        if char:
+            self.char = char
         if id:
             Objects[id] = self
         if board_map and put:
@@ -969,8 +976,9 @@ class BeingItemBase:
         self.loc = loc
         to_B.put(self)
         self.board_map = to_B._map
-        for id in (self.party or []):
-            Objects[id].move_to_board(_map, loc=to_B.find_empty_neighbour(loc))
+        if to_B._map != 'map':
+            for id in (self.party or []):
+                Objects[id].move_to_board(_map, loc=to_B.find_empty_neighbour(loc))
         return to_B
 
     @property
@@ -1005,12 +1013,18 @@ class Item(BeingItemBase):
             self.loc = new
             self.B.put(self)
 
-class MapLocation(Item):
+map_name_to_map_location = {}
+loc_to_map_location = {}
+
+class MapLocation(BeingItemBase):
+    # Item(char, '', loc, self._map)
     char = Blocks.location
 
     def __init__(self, *args, loc_map=None, **kwargs):
-        super().__init__(*args, **kwargs)
+        super().__init__(None, *args, **kwargs)
         self.loc_map = loc_map
+        map_name_to_map_location[loc_map] = self.id
+        loc_to_map_location[self.loc] = self.id
 
 class Knife(Item):
     char = Blocks.knife
@@ -1181,6 +1195,10 @@ class Being(BeingItemBase):
 
     def handle_directional_turn(self, dir, loc):
         """Turn char based on which way it's facing."""
+        print("Blocks.location", Blocks.location)
+        print(self, "self.char", self.char)
+        if self.char == Blocks.party:
+            return
         name = self.__class__.__name__.lower()
         if hasattr(Blocks, name+'_r'):
             to_r = False
@@ -1472,13 +1490,14 @@ class Saves:
         return B.get_all(player.loc), name
 
 def board_setup():
-    Boards.map = Board(Loc(0,0), 'map')
-    Boards.map.board_map()
 
     Boards.b_1 = Board(Loc(0,2), '1')
     Boards.b_1.board_1()
     Boards.b_2 = Board(Loc(1,2), '2')
     Boards.b_2.board_2()
+
+    Boards.b_map = Board(Loc(0,0), 'map')
+    Boards.b_map.board_map()
 
     # Boards.b_3 = Board(Loc(0,1), '3')
     # Boards.b_3.board_3()
@@ -1558,6 +1577,20 @@ def handle_ui(unit, battle=False):
         pass
     elif k == 'f':
         unit.fire(B, player)
+
+    elif k == 'm':
+        if B._map=='map':
+            maploc_id = loc_to_map_location.get(unit.loc)
+            if maploc_id:
+                maploc = Objects[maploc_id]
+                Misc.B = B = unit.move_to_board(maploc.loc_map, loc=Loc(0,0))
+                unit.char = Blocks.player_f
+        elif unit.is_player and not battle:
+            map_loc = map_name_to_map_location[unit.B._map]
+            loc = Objects[map_loc].loc
+            Misc.B = B = unit.move_to_board('map', loc=loc)
+            unit.char = Blocks.party
+
     elif k == 'o':
         name = prompt()
         Misc.player, B = Saves().load(name)
