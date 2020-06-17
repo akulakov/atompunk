@@ -259,6 +259,7 @@ class Blocks:
     banize = player_f
     location = '\u25f0'
     party = '\u25ce'
+    ant = '\u2707'
 
 
 BLOCKING = [Blocks.rock, Type.door1, Type.blocking, Type.roof]
@@ -446,6 +447,7 @@ class Board:
     def __init__(self, loc, _map):
         self.clear()
         self.labels = []
+        self.monsters = []
         self.loc = loc
         self._map = str(_map)
 
@@ -503,6 +505,8 @@ class Board:
         return first(p)
 
     def find_path(self, src, tgt):
+        src = getattr(src, 'loc', src)
+        tgt = getattr(tgt, 'loc', tgt)
         self.gen_graph(tgt)
         frontier = []
         heapq.heappush(frontier, (0, id(src), src))
@@ -528,7 +532,7 @@ class Board:
         while n!=src:
             n = came_from[n]
             l.append(n)
-        return list(reversed(l))
+        return list(reversed(l))[1:]
 
     def random_empty(self):
         while 1:
@@ -648,6 +652,7 @@ class Board:
     def board_1(self):
         self.load_map('1')
         Elder(self.specials[2], '1')
+        self.monsters.append(Ant(self.random_empty(), '1'))
 
     def board_2(self):
         self.load_map('2')
@@ -916,12 +921,13 @@ class BattleUI:
                     u.color = 'lighter blue'
                     blt_put_obj(u)
                     sleep(0.25)
-                    path = u.path.get(tgt) or B.find_path(u.loc, tgt.loc)
-                    if len(path)==1:
+                    # path = u.path.get(tgt) or B.find_path(u.loc, tgt.loc)
+                    path = B.find_path(u.loc, tgt.loc)
+                    if len(path)==0:
                         u.hit(tgt)
                     elif path:
                         u.move(loc=first(path))
-                        u.path[tgt] = path[1:]
+                        u.path[tgt] = path
                     else:
                         return
 
@@ -1046,17 +1052,30 @@ class PartyMixin:
         return sum(u.hp for u in self.live_party())
 
     def live_party(self):
-        return list(u for u in filter(None, self.party) if u.alive)
+        return list(u for u in filter(None, self.party) if Objects[u].alive)
 
-    def party_move(self, player):
-        if dist(self, player) > 6:
+    def party_move(self, player, monsters):
+        B = self.B
+        m = self.closest(monsters)
+        if m and dist(self, m) <= 6:
+            if m.loc in self.neighbours():
+                self.attack(m)
+            else:
+                self.move(loc=self.B.next_move_to(self, m))
+            # path = self.B.find_path(self, m)
+            # self.move(loc=first(path[1:]))
+
+        elif dist(self, player) > 6:
             if random() > 0.05:
-                path = self.path.get(player.id) or self.B.find_path(self.loc, player.loc)
-                if path:
-                    rv = self.move(loc=first(path))
-                    if isinstance(rv, LoadBoard):
-                        handle_load_board(unit, rv)
-                    self.path[player.id] = path[1:]
+                # path = self.path.get(player.id) or self.B.find_path(self.loc, player.loc)
+                self.move(loc=self.B.next_move_to(self, player))
+
+                # path = self.B.find_path(self.loc, player.loc)
+                # if path:
+                #     rv = self.move(loc=first(path[1:]))
+                #     if isinstance(rv, LoadBoard):
+                #         handle_load_board(unit, rv)
+                #     self.path[player.id] = path[1:]
         else:
             self.path = {}
 
@@ -1076,6 +1095,7 @@ class Being(BeingItemBase):
     n_moves = None
     path = None
     caps = 0
+    alive = True
 
     strength = 5
     perception = 5
@@ -1117,6 +1137,37 @@ class Being(BeingItemBase):
     @property
     def name(self):
         return self._name or self.__class__.__name__
+
+    def ai_move(self, player):
+        objs = [Objects[id] for id in player.live_party()]
+        tgt = self.closest(objs + [player])
+
+        if tgt and dist(self, tgt) <= 6:
+            self.color = 'lighter blue'
+            blt_put_obj(self)
+            sleep(0.25)
+            if tgt.loc in self.neighbours():
+                self.attack(tgt)
+            else:
+                self.move(loc=self.B.next_move_to(self, tgt))
+            # path = self.path.get(tgt) or self.B.find_path(self, tgt)
+            # path = self.B.find_path(self, tgt)
+            # if len(path)==1:
+                # self.hit(tgt)
+            # print("self, path, target", self.loc, path, tgt.loc)
+            # if path:
+            #     print('move to ', first(path))
+            #     self.move(loc=first(path))
+            #     self.path[tgt] = path
+            # else:
+            #     return
+
+            # u.attack(tgt)
+            self.B.draw(battle=1)
+            if self.cur_move==0:
+                self.cur_move = self.speed
+                self.color=None
+                blt_put_obj(self)
 
     def talk(self, being, yesno=False, resp=False):
         """Messages, dialogs, yes/no, prompt for response, multiple choice replies."""
@@ -1254,7 +1305,7 @@ class Being(BeingItemBase):
             a = dmg
         else:
             str = self.strength
-            a = int(round((str * self.n * mod)/3))
+            a = int(round((str * mod)/3))
         b = obj.hp
         a = obj.defend(a, type)
         c = b - a
@@ -1276,8 +1327,6 @@ class Being(BeingItemBase):
 
     def defend(self, dmg, type):
         x = 0
-        if type==Type.melee_attack:
-            x = self.defense
         return dmg - x
 
     def action(self):
@@ -1309,6 +1358,9 @@ class Being(BeingItemBase):
 
     def closest(self, objs):
         return first( sorted(objs, key=lambda x: dist(self.loc, x.loc)) )
+
+    def neighbours(self):
+        return self.B.neighbours(self.loc)
 
     @property
     def alive(self):
@@ -1389,9 +1441,12 @@ class XPLevelMixin:
     level = 1
     level_tiers = enumerate(())
 
+class Ant(Being):
+    speed = 6
+    char = Blocks.ant
+
 class Player(PartyMixin, XPLevelMixin, Being):
     speed = 5
-    alive = 1
     type = Type.player
     is_player = True
     level_tiers = enumerate((500,2000,5000,10000,15000,25000,50000,100000,150000))
@@ -1401,6 +1456,7 @@ class Player(PartyMixin, XPLevelMixin, Being):
     def __init__(self, *args, player=None, party=None, spells=None, **kwargs ):
         super().__init__(*args, **kwargs)
         self.party = [ID.banize]
+        self.player = self
 
     def __str__(self):
         return super().__str__()
@@ -1535,11 +1591,19 @@ def main(load_game):
     Banize(Boards.b_1.specials[1].mod_r(10), board_map='1')
     Misc.B.draw(initial=1)
 
+    def live_monsters():
+        return [m for m in Misc.B.monsters if m.alive]
+
     while ok:
         ok = handle_ui(player)
-        for u in player.party:
+        for u in player.live_party():
             u = Objects[u]
-            u.party_move(player)
+            u.party_move(player, live_monsters())
+        for m in live_monsters():
+            m.ai_move(player)
+        if player.dead:
+            player.talk(player, 'The wastes have claimed your life..........')
+            sys.exit()
         if ok=='q': return
         if ok==END_MOVE:
             blt_put_obj(player)
