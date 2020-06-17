@@ -1042,6 +1042,7 @@ class Knife(Item):
     char = Blocks.knife
     type = Type.knife
 
+
 class BlockingItem(Item):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1378,13 +1379,14 @@ class Elder(Being):
     id = ID.elder
     char = Blocks.woman
 
-class RangedWeapon:
-    id = None
+class Weapon(Item):
     dmg = None
+    min_st = None
     _name = None
-
-    def __init__(self):
-        Objects[self.id] = self
+    magazine_size = None    # used for some charged melee wpns
+    ammo_type = None
+    weight = None
+    value_pound = None
 
     @property
     def name(self):
@@ -1397,6 +1399,13 @@ class RangedWeapon:
                 n+=' '
             n += c
         return n
+
+class RangedWeapon(Weapon):
+    range = None
+    shot_aimed_burst_pts = None
+
+    def __init__(self):
+        Objects[self.id] = self
 
     def select_target(self, B):
         x=None
@@ -1425,8 +1434,9 @@ class RangedWeapon:
         pass
 
 
-class Pistol(RangedWeapon):
+class Pistol223(RangedWeapon):
     dmg = 5
+    min_st = 5
     cost = 4
     type = Type.pistol
 
