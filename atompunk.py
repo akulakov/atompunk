@@ -137,10 +137,12 @@ conv_str = {
     6: "It should be marked on your map",
     7: "Where is Vault 13?",
     8: "Somewhere in the Wastes.. beyond that, none of the tribesmen know.",
-    }
+    },
+    ID.player: {1: 'The wastes have claimed your life..........'},
 }
 
 conversations = {
+    ID.player: [1],
     ID.elder:
         [
             1, 2,
@@ -1173,8 +1175,10 @@ class Being(BeingItemBase):
         """Messages, dialogs, yes/no, prompt for response, multiple choice replies."""
         if isinstance(being, int):
             being = Objects.get(being)
-        if not yesno and not resp:
+        if not yesno:
             Talk(self.B, being).talk()
+            if resp:
+                return prompt()
 
 
     def _move(self, dir):
@@ -1451,7 +1455,7 @@ class Player(PartyMixin, XPLevelMixin, Being):
     is_player = True
     level_tiers = enumerate((500,2000,5000,10000,15000,25000,50000,100000,150000))
     char = Blocks.player_l
-    hp = 44
+    hp = 10
 
     def __init__(self, *args, player=None, party=None, spells=None, **kwargs ):
         super().__init__(*args, **kwargs)
@@ -1602,7 +1606,7 @@ def main(load_game):
         for m in live_monsters():
             m.ai_move(player)
         if player.dead:
-            player.talk(player, 'The wastes have claimed your life..........')
+            player.talk(player)
             sys.exit()
         if ok=='q': return
         if ok==END_MOVE:
