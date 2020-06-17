@@ -111,6 +111,7 @@ class ID(Enum):
     banize = auto()
 
     arroyo_map_loc = auto()
+    loc2_map_loc = auto()
 
 
 class Type(Enum):
@@ -641,8 +642,8 @@ class Board:
 
     def board_map(self):
         self.load_map('map')
-        MapLocation('Arroyo', self.specials[1], loc_map='1', id=ID.arroyo_map_loc)
-        # Item(char, '', loc, self._map)
+        MapLocation('Arroyo', self.specials[1], 'map', loc_map='1', id=ID.arroyo_map_loc)
+        MapLocation('Loc2', self.specials[2], 'map', loc_map='3', id=ID.loc2_map_loc)
 
     def board_1(self):
         self.load_map('1')
@@ -650,6 +651,9 @@ class Board:
 
     def board_2(self):
         self.load_map('2')
+
+    def board_3(self):
+        self.load_map('3')
 
     def screen_loc_to_map(self, loc):
         x,y=loc
@@ -937,7 +941,8 @@ class BeingItemBase:
     id = None
 
     def __init__(self, char=None, name=None, loc=None, board_map=None, put=True, id=None, type=None, color=None, n=0):
-        print("char,name,loc,board_map", char,name,loc,board_map)
+        if isinstance(self, MapLocation):
+            print("char,name,loc,board_map", hex(ord(char)) if char else '',name,loc,board_map)
         self.name, self.loc, self.board_map, self.id, self.type, self.color, self.n = \
                 name, loc, board_map, id, type, color, n
         if char:
@@ -1017,7 +1022,6 @@ map_name_to_map_location = {}
 loc_to_map_location = {}
 
 class MapLocation(BeingItemBase):
-    # Item(char, '', loc, self._map)
     char = Blocks.location
 
     def __init__(self, *args, loc_map=None, **kwargs):
@@ -1048,7 +1052,6 @@ class PartyMixin:
         if dist(self, player) > 6:
             if random() > 0.05:
                 path = self.path.get(player.id) or self.B.find_path(self.loc, player.loc)
-                print("path", path)
                 if path:
                     rv = self.move(loc=first(path))
                     if isinstance(rv, LoadBoard):
@@ -1119,7 +1122,6 @@ class Being(BeingItemBase):
         """Messages, dialogs, yes/no, prompt for response, multiple choice replies."""
         if isinstance(being, int):
             being = Objects.get(being)
-        print('talk to', being)
         if not yesno and not resp:
             Talk(self.B, being).talk()
 
@@ -1496,6 +1498,9 @@ def board_setup():
     Boards.b_2 = Board(Loc(1,2), '2')
     Boards.b_2.board_2()
 
+    Boards.b_3 = Board(Loc(0,4), '3')
+    Boards.b_3.board_3()
+
     Boards.b_map = Board(Loc(0,0), 'map')
     Boards.b_map.board_map()
 
@@ -1508,7 +1513,8 @@ def board_setup():
         ['map', None, None],
         [None, None, None],
         ['1', '2', None],
-        # ['3', '4', None],
+        [None, None, None],
+        ['3', None, None],
     ]
     Misc.B = Boards.b_1
 
