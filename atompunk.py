@@ -123,6 +123,7 @@ class Type(Enum):
     player = auto()
     vault13_flask = auto()
     cap = auto()
+    ranged_attack = auto()
 
     knife = auto()
     pistol223 = auto()
@@ -238,6 +239,7 @@ class Talk:
 
 class Blocks:
     """All game tiles."""
+    bottle = '\u26b9'
     blank = '.'
     rock3 = '░'
     large_circle = '\u20dd'
@@ -268,6 +270,7 @@ class Blocks:
     ant = '\u2707'
     pistol = '\u2734'
     ammo = '-'
+    bolt1 = '~'
 
 
 BLOCKING = [Blocks.rock, Type.door1, Type.blocking, Type.roof]
@@ -380,7 +383,7 @@ def stats(battle=False):
     s=''
     eqp = pl.equipped[0] or ''
     if eqp:
-        eqp = blt_esc(f'| [{Objects[eqp].name}]')
+        eqp = blt_esc(f'| {Objects[eqp].name}')
     st = s + f'[Caps:{pl.caps}] {move_str} | {Misc.B._map} {eqp}'
     puts2(1, 0, blt_esc(st))
     refresh()
@@ -1064,6 +1067,9 @@ class Knife(Item):
     char = Blocks.knife
     type = Type.knife
 
+class HealingPowder(Item):
+    char = Blocks.bottle
+    heal = 5
 
 class BlockingItem(Item):
     def __init__(self, *args, **kwargs):
@@ -1364,6 +1370,11 @@ class Being(BeingItemBase):
         if not item_id: return
 
         obj = Objects[item_id]
+        if isinstance(obj, HealingPowder):
+            self.hp = min(self.hp+obj.heal, self.max_hp)
+            self.inv[item_id] -= 1
+            status('You feel better')
+
         eq = self.equipped
         if equip:
             if isinstance(obj, Weapon):
@@ -1449,16 +1460,21 @@ class RangedWeapon(Weapon):
         self.apply(being, choice(targets))
 
     def fire(self, B, being):
+        if self.loaded<=0:
+            status('Out of ammo!')
+            return
+
         B.draw()
         loc = self.select_target(B)
         if loc:
             tgt = B.get_being(loc)
             if tgt:
                 self.apply(being, tgt)
+                self.loaded -= 1
 
     def apply(self, being, tgt):
         loc = being.loc
-        dmg = randrange(self.dmg)
+        dmg = randrange(*self.dmg)
         being.hit(tgt, dmg=dmg, type=Type.ranged_attack, descr=self.name)
         # Use some hit animation...
         blt_put_obj(Blocks.bolt1, loc)
@@ -1532,6 +1548,11 @@ class Player(PartyMixin, XPLevelMixin, Being):
             if xp > self.xp:
                 break
             self.level = lev
+
+    def fire(self):
+        eqp = self.equipped[0]
+        if eqp:
+            Objects[eqp].fire(self.B, self)
 
 class NPC(PartyMixin, XPLevelMixin, Being):
     pass
@@ -1726,7 +1747,7 @@ def handle_ui(unit, battle=False):
     elif k == '.':
         pass
     elif k == 'f':
-        unit.fire(B, player)
+        unit.fire()
 
     elif k == 'm':
         if B._map=='map':
@@ -1791,6 +1812,13 @@ def handle_ui(unit, battle=False):
 
     elif k == 'E':
         B.display(str(B.get_all(unit.loc)))
+
+    elif k == 'r':
+        pl = Misc.player
+        eqp = pl.equipped[0]
+        if eqp:
+            Objects[eqp].reload(pl.inv)
+            pl.cur_move -= 1
 
     elif k == 'e':
         Misc.player.use(equip=True)
