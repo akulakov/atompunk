@@ -267,6 +267,7 @@ class Blocks:
     party = '\u25ce'
     ant = '\u2707'
     pistol = '\u2734'
+    ammo = '-'
 
 
 BLOCKING = [Blocks.rock, Type.door1, Type.blocking, Type.roof]
@@ -958,14 +959,18 @@ class BeingItemBase:
     type = None
 
     def __init__(self, char=None, name=None, loc=None, board_map=None, put=True, id=None, type=None, color=None, n=0):
-        self._name, self.loc, self.board_map, self.id, self.color, self.n = \
-                name, loc, board_map, id, color, n
+        self._name, self.loc, self.board_map, self.color, self.n = \
+                name, loc, board_map, color, n
         if char:
             self.char = char
         if type:
             self.type = type
         if id:
-            Objects[id] = self
+            self.id = id
+        if self.id:
+            Objects[self.id] = self
+        elif self.type:
+            Objects[self.type] = self
         if board_map and put:
             self.B.put(self)
 
@@ -974,7 +979,7 @@ class BeingItemBase:
 
     @property
     def name(self):
-        return self._name
+        return self._name or self.__class__.__name__
 
     def tele(self, loc):
         self.B.remove(self)
@@ -1363,7 +1368,7 @@ class Being(BeingItemBase):
                     self.inv[eq[0]] += 1
                 eq[0] = item_id
                 self.inv[item_id] -= 1
-                status(f'You start wearing {obj}')
+                status(f'You start using {obj}')
             elif isinstance(obj, Armor):
                 if self.armor:
                     self.inv[self.armor] += 1
@@ -1453,10 +1458,11 @@ class RangedWeapon(Weapon):
 class Ammo(Item):
     pass
 
-class FMJ223:
+class FMJ223(Ammo):
     _name = '.223 FMJ'
     value = 4
     type = Type.fmj223
+    char = Blocks.ammo
 
 class Pistol223(RangedWeapon):
     dmg = 20,30
@@ -1624,6 +1630,8 @@ def main(load_game):
         os.mkdir('saves')
     Misc.is_game = 1
     Pistol223()
+    FMJ223()
+    print("Objects[Type.fmj223]", Objects[Type.fmj223])
 
     ok=1
     board_setup()
@@ -1644,16 +1652,18 @@ def main(load_game):
         for u in player.live_party():
             u = Objects[u]
             while 1:
-                print('live_party loop', u.cur_move)
                 u.party_move(player, live_monsters())
+                sleep(0.1)
+                refresh()
                 if not Misc.combat or u.cur_move<=0 or u.dead:
                     u.cur_move = u.speed
                     break
 
         for m in live_monsters():
             while 1:
-                print('live_monsters loop', m.cur_move)
                 m.ai_move(player)
+                sleep(0.1)
+                refresh()
                 if not Misc.combat or m.cur_move<=0 or m.dead:
                     m.cur_move = m.speed
                     break
