@@ -378,7 +378,10 @@ def stats(battle=False):
         move, speed = u.cur_move, u.speed
         move_str = f' | Move {move}/{speed}'
     s=''
-    st = s + f'[Caps:{pl.caps}] {move_str} | {Misc.B._map}'
+    eqp = pl.equipped[0] or ''
+    if eqp:
+        eqp = blt_esc(f'| [{Objects[eqp].name}]')
+    st = s + f'[Caps:{pl.caps}] {move_str} | {Misc.B._map} {eqp}'
     puts2(1, 0, blt_esc(st))
     refresh()
 
@@ -1428,6 +1431,7 @@ class Weapon(Item):
 class RangedWeapon(Weapon):
     range = None
     shot_aimed_burst_pts = None
+    loaded = 0
 
     def select_target(self, B):
         x=None
@@ -1453,7 +1457,22 @@ class RangedWeapon(Weapon):
                 self.apply(being, tgt)
 
     def apply(self, being, tgt):
-        pass
+        loc = being.loc
+        dmg = randrange(self.dmg)
+        being.hit(tgt, dmg=dmg, type=Type.ranged_attack, descr=self.name)
+        # Use some hit animation...
+        blt_put_obj(Blocks.bolt1, loc)
+        sleep(0.25)
+        blt_put_obj(being, loc)
+
+    def reload(self, inv):
+        ammo = inv.get(self.ammo.type)
+        if ammo:
+            need = self.magazine_size - self.loaded
+            qty = min(need, ammo)
+            self.loaded += qty
+            inv[self.ammo.type] -= qty
+
 
 class Ammo(Item):
     pass
@@ -1476,15 +1495,6 @@ class Pistol223(RangedWeapon):
     char = Blocks.pistol
     type = Type.pistol223
     ammo = FMJ223
-
-    def apply(self, being, tgt):
-        loc = being.loc
-        dmg = self.dmg
-        being.hit(tgt, dmg=dmg, type=Type.ranged_attack, descr=self.name)
-        # Use some hit animation...
-        blt_put_obj(Blocks.bolt1, loc)
-        sleep(0.25)
-        blt_put_obj(being, loc)
 
 class XPLevelMixin:
     xp = 0
