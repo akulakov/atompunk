@@ -123,7 +123,7 @@ class Type(Enum):
     player = auto()
     knife = auto()
     vault13_flask = auto()
-    pistol = auto()
+    pistol223 = auto()
     cap = auto()
 
 conv_str = {
@@ -262,6 +262,7 @@ class Blocks:
     location = '\u25f0'
     party = '\u25ce'
     ant = '\u2707'
+    pistol = '\u2734'
 
 
 BLOCKING = [Blocks.rock, Type.door1, Type.blocking, Type.roof]
@@ -568,7 +569,7 @@ class Board:
     def remove(self, obj, loc=None):
         loc = loc or obj.loc
         cell = self.B[loc.y][loc.x]
-        cell.remove(obj if obj in cell else obj.id)
+        cell.remove(obj if obj in cell else (obj.id or obj.type))
 
     def get_all_obj(self, loc):
         return [Objects[n] or n for n in self.B[loc.y][loc.x]
@@ -654,6 +655,8 @@ class Board:
     def board_1(self):
         self.load_map('1')
         Elder(self.specials[2], '1')
+        self.put(Type.pistol223, self.specials[2].mod_r())
+        # self.put(self.specials[2].mod_r(), Objects[Type.pistol223])
         self.monsters.append(Ant(self.random_empty(), '1'))
 
     def board_2(self):
@@ -695,7 +698,7 @@ class Board:
                 cell = [c for c in cell if getattr(c,'char',None)!='']
                 a = last(cell)
                 x,y = loc_to_scr(x, y)
-                if isinstance(a, ID):
+                if isinstance(a, (ID, Type)):
                     a = Objects[a]
                 puts(x,y,a)
 
@@ -947,14 +950,15 @@ class BeingItemBase:
     color = None
     _str = None
     id = None
+    type = None
 
     def __init__(self, char=None, name=None, loc=None, board_map=None, put=True, id=None, type=None, color=None, n=0):
-        if isinstance(self, MapLocation):
-            print("char,name,loc,board_map", hex(ord(char)) if char else '',name,loc,board_map)
-        self.name, self.loc, self.board_map, self.id, self.type, self.color, self.n = \
-                name, loc, board_map, id, type, color, n
+        self._name, self.loc, self.board_map, self.id, self.color, self.n = \
+                name, loc, board_map, id, color, n
         if char:
             self.char = char
+        if type:
+            self.type = type
         if id:
             Objects[id] = self
         if board_map and put:
@@ -962,6 +966,10 @@ class BeingItemBase:
 
     def __str__(self):
         return self.char
+
+    @property
+    def name(self):
+        return self._name
 
     def tele(self, loc):
         self.B.remove(self)
@@ -1065,27 +1073,18 @@ class PartyMixin:
                 self.attack(m)
             else:
                 self.move(loc=self.B.next_move_to(self, m))
-            # path = self.B.find_path(self, m)
-            # self.move(loc=first(path[1:]))
 
         elif dist(self, player) > 6:
             if random() > 0.05:
-                # path = self.path.get(player.id) or self.B.find_path(self.loc, player.loc)
                 self.move(loc=self.B.next_move_to(self, player))
-
-                # path = self.B.find_path(self.loc, player.loc)
-                # if path:
-                #     rv = self.move(loc=first(path[1:]))
-                #     if isinstance(rv, LoadBoard):
-                #         handle_load_board(unit, rv)
-                #     self.path[player.id] = path[1:]
-        else:
-            self.path = {}
 
 def handle_load_board(unit, rv):
         loc = rv.b_new
         if chk_b_oob(loc) and board_grid[loc.y][loc.x]:
             return unit.move_to_board(Boards.get_by_loc(loc), loc=rv.new)
+
+class Armor:
+    pass
 
 class Being(BeingItemBase):
     hp = 1
@@ -1099,6 +1098,8 @@ class Being(BeingItemBase):
     path = None
     caps = 0
     alive = True
+    equipped = None
+    armor = None
 
     strength = 5
     perception = 5
@@ -1118,8 +1119,7 @@ class Being(BeingItemBase):
 
     def __init__(self, loc=None, board_map=None, put=True, id=None, name=None, state=0, char='?',
                  color=None):
-        self.loc, self.board_map, self._name, self.state, self.color  = \
-                loc, board_map, name, state, color
+        self.loc, self.board_map, self._name, self.state, self.color  = loc, board_map, name, state, color
         self.char = self.char or char
         self.inv = defaultdict(int)
         self.cur_move = self.n_moves
@@ -1133,13 +1133,14 @@ class Being(BeingItemBase):
         self.path = {}
         self.skills = defaultdict(int)
         self.traits = []
+        self.equipped = [None, None]
 
     def __str__(self):
         return super().__str__() if self.hp>0 else Blocks.rubbish
 
     @property
     def name(self):
-        return self._name or self.__class__.__name__
+        return ('dead ' if self.dead else '') + (self._name or self.__class__.__name__)
 
     def ai_move(self, player):
         objs = [Objects[id] for id in player.live_party()]
@@ -1147,30 +1148,17 @@ class Being(BeingItemBase):
 
         if tgt and dist(self, tgt) <= 6:
             self.color = 'lighter blue'
-            blt_put_obj(self)
-            sleep(0.25)
+            # blt_put_obj(self)
+            # sleep(0.25)
             if tgt.loc in self.neighbours():
                 self.attack(tgt)
             else:
                 self.move(loc=self.B.next_move_to(self, tgt))
-            # path = self.path.get(tgt) or self.B.find_path(self, tgt)
-            # path = self.B.find_path(self, tgt)
-            # if len(path)==1:
-                # self.hit(tgt)
-            # print("self, path, target", self.loc, path, tgt.loc)
-            # if path:
-            #     print('move to ', first(path))
-            #     self.move(loc=first(path))
-            #     self.path[tgt] = path
-            # else:
-            #     return
-
-            # u.attack(tgt)
             self.B.draw(battle=1)
             if self.cur_move==0:
                 self.cur_move = self.speed
                 self.color=None
-                blt_put_obj(self)
+                # blt_put_obj(self)
 
     def talk(self, being, yesno=False, resp=False):
         """Messages, dialogs, yes/no, prompt for response, multiple choice replies."""
@@ -1246,7 +1234,8 @@ class Being(BeingItemBase):
             refresh()
             if self.cur_move:
                 self.cur_move -= 1
-            if self.player and not self.player.is_ai:
+            print("self,self.is_player", self,self.is_player)
+            if self.is_player:
                 self.handle_player_move(new)
             return True, True
         return None, None
@@ -1270,18 +1259,18 @@ class Being(BeingItemBase):
 
     def handle_player_move(self, new):
         B=self.B
-        pick_up = [ID.gold]
+        pick_up = []
         items = B.get_all_obj(new)
         top_obj = last(items)
         if top_obj:
-            # why does this work with unicode offsets? maybe it doesn't..
             if isinstance(top_obj, int):
                 top_obj = Objects[top_obj.id]
 
         for x in reversed(items):
-            if x.id in pick_up:
-                if self.player:
-                    pass
+            print("x", x)
+            if x.id in pick_up or x.type in pick_up or isinstance(x, Weapon):
+                if self.is_player:
+                    self.inv[x.id or x.type] += 1
                 B.remove(x, new)
 
         names = [o.name for o in B.get_all_obj(new) if o.name and o!=self]
@@ -1345,19 +1334,37 @@ class Being(BeingItemBase):
             Item('f', 'Vault 13 Flask', type=Type.vault13_flask)
             self.inv[Type.vault13_flask] += 1
 
-    def use(self):
+    def use(self, equip=False):
         ascii_letters = string.ascii_letters
-        for n, (id,qty) in enumerate(self.inv.items()):
+        items = [(id,q) for id,q in self.inv.items() if id not in self.equipped]
+        for n, (id,qty) in enumerate(items):
             item = Objects[id]
             puts(0,n, f' {ascii_letters[n]}) {item.name:4} - {qty} ')
+        refresh()
         ch = get_and_parse_key()
         item = None
         if ch in ascii_letters:
             try:
-                item_id = list(self.inv.keys())[string.ascii_letters.index(ch)]
+                item_id = items[string.ascii_letters.index(ch)][0]
             except IndexError:
                 return
         if not item_id: return
+
+        obj = Objects[item_id]
+        eq = self.equipped
+        if equip:
+            if isinstance(obj, Weapon):
+                if not eq[0]:
+                    eq[0] = item_id
+                    status('You start wearing {obj}')
+                elif not eq[1]:
+                    eq[1] = item_id
+                    status('You start wearing {obj}')
+            elif isinstance(obj, Armor):
+                if self.armor:
+                    self.inv[self.armor] += 1
+                self.armor = item_id
+                status('You start wearing {obj}')
 
         status('Nothing happens')
 
@@ -1388,6 +1395,14 @@ class Weapon(Item):
     weight = None
     value_pound = None
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        print('adding Weapon to registry')
+        Objects[self.type] = self
+        print("self.type", self.type)
+        print("Objects[self.type]", Objects[self.type])
+
+
     @property
     def name(self):
         if self._name:
@@ -1403,9 +1418,6 @@ class Weapon(Item):
 class RangedWeapon(Weapon):
     range = None
     shot_aimed_burst_pts = None
-
-    def __init__(self):
-        Objects[self.id] = self
 
     def select_target(self, B):
         x=None
@@ -1435,10 +1447,16 @@ class RangedWeapon(Weapon):
 
 
 class Pistol223(RangedWeapon):
-    dmg = 5
+    dmg = 20,30
     min_st = 5
     cost = 4
-    type = Type.pistol
+    range = 30
+    shot_aimed_burst_pts = (5,6,None)
+    magazine_size = 5
+    weight = 5
+    value_pound = 700
+    char = Blocks.pistol
+    type = Type.pistol223
 
     def apply(self, being, tgt):
         loc = being.loc
@@ -1477,9 +1495,6 @@ class Player(PartyMixin, XPLevelMixin, Being):
 
     def __repr__(self):
         return f'<P: {self.name}>'
-
-    def is_ai(self):
-        return not self.player or self.player.is_ai
 
     def add_xp(self, xp):
         self.xp+=xp
@@ -1598,6 +1613,7 @@ def main(load_game):
     if not os.path.exists('saves'):
         os.mkdir('saves')
     Misc.is_game = 1
+    Pistol223()
 
     ok=1
     board_setup()
@@ -1725,6 +1741,9 @@ def handle_ui(unit, battle=False):
 
     elif k == 'E':
         B.display(str(B.get_all(unit.loc)))
+
+    elif k == 'e':
+        Misc.player.use(equip=True)
 
     elif k == 'i':
         txt = []
