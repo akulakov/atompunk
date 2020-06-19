@@ -121,10 +121,14 @@ class Type(Enum):
     container = auto()
     blocking = auto()
     player = auto()
-    knife = auto()
     vault13_flask = auto()
-    pistol223 = auto()
     cap = auto()
+
+    knife = auto()
+    pistol223 = auto()
+
+    fmj223 = auto()
+
 
 conv_str = {
     ID.elder:
@@ -272,6 +276,7 @@ class Misc:
     status = []
     current_unit = None
     player = None
+    combat = False
 
 def mkcell():
     return [Blocks.blank]
@@ -369,8 +374,8 @@ def stats(battle=False):
     move_str = ''
     if battle and Misc.current_unit:
         u = Misc.current_unit
-        move, n_moves = u.cur_move, u.n_moves
-        move_str = f' | Move {move}/{n_moves}'
+        move, speed = u.cur_move, u.speed
+        move_str = f' | Move {move}/{speed}'
     s=''
     st = s + f'[Caps:{pl.caps}] {move_str} | {Misc.B._map}'
     puts2(1, 0, blt_esc(st))
@@ -990,6 +995,7 @@ class BeingItemBase:
         self.inv[id] += n
 
     def move_to_board(self, _map, specials_ind=None, loc=None):
+        Misc.combat = False
         to_B = getattr(Boards, 'b_'+_map)
         if specials_ind is not None:
             loc = to_B.specials[specials_ind]
@@ -1077,6 +1083,8 @@ class PartyMixin:
         elif dist(self, player) > 6:
             if random() > 0.05:
                 self.move(loc=self.B.next_move_to(self, player))
+        else:
+            self.cur_move = 0
 
 def handle_load_board(unit, rv):
         loc = rv.b_new
@@ -1094,7 +1102,6 @@ class Being(BeingItemBase):
     speed = 1
     type = None
     char = None
-    n_moves = None
     path = None
     caps = 0
     alive = True
@@ -1122,7 +1129,7 @@ class Being(BeingItemBase):
         self.loc, self.board_map, self._name, self.state, self.color  = loc, board_map, name, state, color
         self.char = self.char or char
         self.inv = defaultdict(int)
-        self.cur_move = self.n_moves
+        self.cur_move = self.speed
         if id:
             self.id = id
         if self.id:
@@ -1147,18 +1154,16 @@ class Being(BeingItemBase):
         tgt = self.closest(objs + [player])
 
         if tgt and dist(self, tgt) <= 6:
+            Misc.combat = True
             self.color = 'lighter blue'
-            # blt_put_obj(self)
-            # sleep(0.25)
             if tgt.loc in self.neighbours():
                 self.attack(tgt)
             else:
                 self.move(loc=self.B.next_move_to(self, tgt))
             self.B.draw(battle=1)
-            if self.cur_move==0:
-                self.cur_move = self.speed
-                self.color=None
-                # blt_put_obj(self)
+            # self.color=None
+        else:
+            self.cur_move = 0
 
     def talk(self, being, yesno=False, resp=False):
         """Messages, dialogs, yes/no, prompt for response, multiple choice replies."""
@@ -1336,7 +1341,7 @@ class Being(BeingItemBase):
 
     def use(self, equip=False):
         ascii_letters = string.ascii_letters
-        items = [(id,q) for id,q in self.inv.items() if id not in self.equipped]
+        items = [(id,q) for id,q in self.inv.items() if q>0]
         for n, (id,qty) in enumerate(items):
             item = Objects[id]
             puts(0,n, f' {ascii_letters[n]}) {item.name:4} - {qty} ')
@@ -1354,19 +1359,19 @@ class Being(BeingItemBase):
         eq = self.equipped
         if equip:
             if isinstance(obj, Weapon):
-                if not eq[0]:
-                    eq[0] = item_id
-                    status('You start wearing {obj}')
-                elif not eq[1]:
-                    eq[1] = item_id
-                    status('You start wearing {obj}')
+                if eq[0]:
+                    self.inv[eq[0]] += 1
+                eq[0] = item_id
+                self.inv[item_id] -= 1
+                status(f'You start wearing {obj}')
             elif isinstance(obj, Armor):
                 if self.armor:
                     self.inv[self.armor] += 1
                 self.armor = item_id
-                status('You start wearing {obj}')
-
-        status('Nothing happens')
+                self.inv[item_id] -= 1
+                status(f'You start wearing {obj}')
+            else:
+                status('Cannot equip this item' )
 
     def closest(self, objs):
         return first( sorted(objs, key=lambda x: dist(self.loc, x.loc)) )
@@ -1445,6 +1450,13 @@ class RangedWeapon(Weapon):
     def apply(self, being, tgt):
         pass
 
+class Ammo(Item):
+    pass
+
+class FMJ223:
+    _name = '.223 FMJ'
+    value = 4
+    type = Type.fmj223
 
 class Pistol223(RangedWeapon):
     dmg = 20,30
@@ -1457,6 +1469,7 @@ class Pistol223(RangedWeapon):
     value_pound = 700
     char = Blocks.pistol
     type = Type.pistol223
+    ammo = FMJ223
 
     def apply(self, being, tgt):
         loc = being.loc
@@ -1466,7 +1479,6 @@ class Pistol223(RangedWeapon):
         blt_put_obj(Blocks.bolt1, loc)
         sleep(0.25)
         blt_put_obj(being, loc)
-
 
 class XPLevelMixin:
     xp = 0
@@ -1489,6 +1501,8 @@ class Player(PartyMixin, XPLevelMixin, Being):
         super().__init__(*args, **kwargs)
         self.party = [ID.banize]
         self.player = self
+        self.inv[Type.pistol223] = 1
+        self.inv[Type.fmj223] = 20
 
     def __str__(self):
         return super().__str__()
@@ -1589,11 +1603,6 @@ def board_setup():
     Boards.b_map = Board(Loc(0,0), 'map')
     Boards.b_map.board_map()
 
-    # Boards.b_3 = Board(Loc(0,1), '3')
-    # Boards.b_3.board_3()
-    # Boards.b_4 = Board(Loc(1,1), '4')
-    # Boards.b_4.board_4()
-
     board_grid[:] = [
         ['map', None, None],
         [None, None, None],
@@ -1602,6 +1611,7 @@ def board_setup():
         ['3', None, None],
     ]
     Misc.B = Boards.b_1
+
 
 def main(load_game):
     blt.open()
@@ -1625,12 +1635,32 @@ def main(load_game):
         return [m for m in Misc.B.monsters if m.alive]
 
     while ok:
-        ok = handle_ui(player)
+        while 1:
+            ok = handle_ui(player)
+            if not Misc.combat or player.cur_move<=0 or player.dead:
+                player.cur_move = player.speed
+                break
+
         for u in player.live_party():
             u = Objects[u]
-            u.party_move(player, live_monsters())
+            while 1:
+                print('live_party loop', u.cur_move)
+                u.party_move(player, live_monsters())
+                if not Misc.combat or u.cur_move<=0 or u.dead:
+                    u.cur_move = u.speed
+                    break
+
         for m in live_monsters():
-            m.ai_move(player)
+            while 1:
+                print('live_monsters loop', m.cur_move)
+                m.ai_move(player)
+                if not Misc.combat or m.cur_move<=0 or m.dead:
+                    m.cur_move = m.speed
+                    break
+
+        if not live_monsters():
+            Misc.combat = False
+
         if player.dead:
             player.talk(player)
             sys.exit()
