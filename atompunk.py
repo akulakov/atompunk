@@ -1000,8 +1000,10 @@ class BeingItemBase:
     def has(self, id):
         return self.inv.get(id)
 
-    def remove1(self, id):
-        self.inv[id] -= 1
+    def remove1(self, id, n=1):
+        self.inv[id] -= n
+        if self.inv[id]<=0:
+            del self.inv[id]
 
     def add1(self, id, n=1):
         self.inv[id] += n
@@ -1122,6 +1124,7 @@ class Being(BeingItemBase):
     alive = True
     equipped = None
     armor = None
+    base_hit_ap = 2
 
     strength = 5
     perception = 5
@@ -1236,7 +1239,7 @@ class Being(BeingItemBase):
 
                 self.handle_directional_turn(dir, new)
                 if self.player != being.player:
-                    self.attack(being)
+                    self.attack(being, melee=True)
                 if self.cur_move:
                     self.cur_move -= 1
                 return True, True
@@ -1300,9 +1303,42 @@ class Being(BeingItemBase):
             a = ':' if plural else ' a'
             status(f'You see{a} {names}')
 
-    def attack(self, obj):
-        if obj.loc in self.B.neighbours(self.loc):
-            self.hit(obj)
+    def ai_attack(self, obj):
+        for id_or_type in self.inv:
+            it = Objects[id_or_type]
+            eqp = self.equipped[0]
+            if isinstance(it, Weapon) and not eqp or eqp.value_pound < it.value_pound:
+                self.equipped[0] = it
+                status(f'{self} equipped {it}')
+        self.attack(obj)
+
+    def attack(self, obj, melee=False):
+        eqp = self.equipped[0]
+        wpn = None
+        if eqp:
+            wpn = Objects[eqp]
+            req_ap = wpn.hit_aimed_burst_pts[0]
+        if wpn and req_ap > self.cur_move:
+            wpn = None
+        if melee and wpn and isinstance(wpn, RangedWeapon):
+            # force melee
+            wpn = None
+        if not wpn:
+            req_ap = self.base_hit_ap
+
+        if req_ap > self.cur_move:
+            self.cur_move = 0
+            return
+
+        dmg = self.strength // 2
+        if wpn:
+            dmg = randrange(*wpn.dmg)
+
+        if isinstance(wpn, RangedWeapon):
+            self.hit(obj, dmg, ranged=True)
+        elif obj.loc in self.B.neighbours(self.loc):
+            self.hit(obj, dmg)
+        self.cur_move -= req_ap
 
     def get_dir(self, b):
         a = self.loc
@@ -1314,7 +1350,7 @@ class Being(BeingItemBase):
         elif a.x<b.x: return 'l'
         elif a.x>b.x: return 'h'
 
-    def hit(self, obj, ranged=False, dmg=None, mod=1, type=None, descr=''):
+    def hit(self, obj, dmg=None, ranged=False, mod=1, type=None, descr=''):
         if dmg:
             a = dmg
         else:
@@ -1336,8 +1372,6 @@ class Being(BeingItemBase):
             obj.hp = 0
         else:
             obj.hp = c
-
-        self.cur_move = 0
 
     def defend(self, dmg, type):
         x = 0
@@ -1373,7 +1407,7 @@ class Being(BeingItemBase):
         obj = Objects[item_id]
         if isinstance(obj, HealingPowder):
             self.hp = min(self.hp+obj.heal, self.max_hp)
-            self.inv[item_id] -= 1
+            self.remove1(item_id)
             status('You feel better')
 
         eq = self.equipped
@@ -1382,13 +1416,13 @@ class Being(BeingItemBase):
                 if eq[0]:
                     self.inv[eq[0]] += 1
                 eq[0] = item_id
-                self.inv[item_id] -= 1
+                self.remove1(item_id)
                 status(f'You start using {obj}')
             elif isinstance(obj, Armor):
                 if self.armor:
                     self.inv[self.armor] += 1
                 self.armor = item_id
-                self.inv[item_id] -= 1
+                self.remove1(item_id)
                 status(f'You start wearing {obj}')
             else:
                 status('Cannot equip this item' )
@@ -1420,6 +1454,7 @@ class Weapon(Item):
     ammo_type = None
     weight = None
     value_pound = None
+    hit_aimed_burst_pts = None
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1443,7 +1478,6 @@ class Weapon(Item):
 
 class RangedWeapon(Weapon):
     range = None
-    shot_aimed_burst_pts = None
     loaded = 0
 
     def select_target(self, B):
@@ -1465,6 +1499,9 @@ class RangedWeapon(Weapon):
         if self.loaded<=0:
             status('Out of ammo!')
             return
+        if being.cur_move < self.hit_aimed_burst_pts[0]:
+            status('Not enough Action Points!')
+            return
 
         B.draw()
         loc = self.select_target(B)
@@ -1473,6 +1510,7 @@ class RangedWeapon(Weapon):
             if tgt:
                 self.apply(being, tgt)
                 self.loaded -= 1
+                being.cur_move -= self.hit_aimed_burst_pts[0]
 
     def apply(self, being, tgt):
         loc = tgt.loc
@@ -1495,7 +1533,7 @@ class RangedWeapon(Weapon):
             need = self.magazine_size - self.loaded
             qty = min(need, ammo)
             self.loaded += qty
-            inv[self.ammo.type] -= qty
+            self.remove1(self.ammo.type, qty)
             status(f'Reloaded {self}')
 
 
@@ -1514,7 +1552,7 @@ class Pistol223(RangedWeapon):
     min_st = 5
     cost = 4
     range = 30
-    shot_aimed_burst_pts = (5,6,None)
+    hit_aimed_burst_pts = (5,6,None)
     magazine_size = 5
     weight = 5
     value_pound = 700
@@ -1580,30 +1618,30 @@ class IndependentParty(Player):
 class Bullet(Item):
     pass
 
-class Shooter(Being):
-    strength = 6
-    defense = 3
-    hp = 10
-    speed = 4
-    cost = 30
+# class Shooter(Being):
+#     strength = 6
+#     defense = 3
+#     hp = 10
+#     speed = 4
+#     cost = 30
 
-    def fire(self, B, player):
-        char = Blocks.bullet
-        a = Bullet(char, '', loc=self.loc)
-        B.put(a)
-        mod = 1
-        for _ in range(self.range):
-            a.move(self.last_dir)
-            if B.found_type_at(Type.blocking, a.loc):
-                mod = 0.5
-            being = B.get_being(a.loc)
-            if being and being.alive and being.player!=player:
-                self.hit(being, ranged=1, mod=mod)
-                B.remove(being)     # shuffle on top of arrow
-                B.put(being)
-                break
-            blt_put_obj(a)
-            sleep(0.15)
+#     def fire(self, B, player):
+#         char = Blocks.bullet
+#         a = Bullet(char, '', loc=self.loc)
+#         B.put(a)
+#         mod = 1
+#         for _ in range(self.range):
+#             a.move(self.last_dir)
+#             if B.found_type_at(Type.blocking, a.loc):
+#                 mod = 0.5
+#             being = B.get_being(a.loc)
+#             if being and being.alive and being.player!=player:
+#                 self.hit(being, ranged=1, mod=mod)
+#                 B.remove(being)     # shuffle on top of arrow
+#                 B.put(being)
+#                 break
+#             blt_put_obj(a)
+#             sleep(0.15)
 
 class Saves:
     saves = {}
@@ -1791,7 +1829,7 @@ def handle_ui(unit, battle=False):
     elif k == 'v':
         status(str(unit.loc))
     elif k == ' ':
-        if battle:
+        if Misc.combat:
             unit.cur_move=0
         else:
             unit.action()
