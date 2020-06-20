@@ -377,15 +377,14 @@ def stats(battle=False):
     pl = Misc.player
     if not pl: return
     move_str = ''
-    if battle and Misc.current_unit:
-        u = Misc.current_unit
-        move, speed = u.cur_move, u.speed
+    if Misc.combat:
+        move, speed = pl.cur_move, pl.speed
         move_str = f' | Move {move}/{speed}'
     s=''
     eqp = pl.equipped[0] or ''
     if eqp:
         eqp = blt_esc(f'| {Objects[eqp].name}')
-    st = s + f'[Caps:{pl.caps}] {move_str} | {Misc.B._map} {eqp}'
+    st = s + f'[{pl.hp}/{pl.max_hp}] [Caps:{pl.caps}] {move_str} | {Misc.B._map} {eqp}'
     puts2(1, 0, blt_esc(st))
     refresh()
 
@@ -670,6 +669,7 @@ class Board:
         Elder(self.specials[2], '1')
         self.put(Type.pistol223, self.specials[2].mod_r())
         # self.put(self.specials[2].mod_r(), Objects[Type.pistol223])
+        self.monsters.append(Ant(self.random_empty(), '1'))
         self.monsters.append(Ant(self.random_empty(), '1'))
 
     def board_2(self):
@@ -1016,7 +1016,7 @@ class BeingItemBase:
         to_B.put(self)
         self.board_map = to_B._map
         if to_B._map != 'map':
-            for id in (self.party or []):
+            for id in (self.live_party() or []):
                 Objects[id].move_to_board(_map, loc=to_B.find_empty_neighbour(loc))
         return to_B
 
@@ -1089,7 +1089,7 @@ class PartyMixin:
     def party_move(self, player, monsters):
         B = self.B
         m = self.closest(monsters)
-        if m and dist(self, m) <= 6:
+        if m and (Misc.combat or dist(self, m) <= 6):
             if m.loc in self.neighbours():
                 self.attack(m)
             else:
@@ -1151,7 +1151,7 @@ class Being(BeingItemBase):
             Objects[self.id] = self
         if board_map and put:
             self.B.put(self)
-        self.max_health = self.hp
+        self.max_hp = self.hp
         self.path = {}
         self.skills = defaultdict(int)
         self.traits = []
@@ -1168,7 +1168,7 @@ class Being(BeingItemBase):
         objs = [Objects[id] for id in player.live_party()]
         tgt = self.closest(objs + [player])
 
-        if tgt and dist(self, tgt) <= 6:
+        if tgt and (Misc.combat or (dist(self, tgt) <= 6)):
             Misc.combat = True
             self.color = 'lighter blue'
             if tgt.loc in self.neighbours():
@@ -1538,7 +1538,7 @@ class Player(PartyMixin, XPLevelMixin, Being):
     is_player = True
     level_tiers = enumerate((500,2000,5000,10000,15000,25000,50000,100000,150000))
     char = Blocks.player_l
-    hp = 10
+    hp = 40
 
     def __init__(self, *args, player=None, party=None, spells=None, **kwargs ):
         super().__init__(*args, **kwargs)
@@ -1688,6 +1688,7 @@ def main(load_game):
     while ok:
         while 1:
             ok = handle_ui(player)
+            if ok=='q': return
             if not Misc.combat or player.cur_move<=0 or player.dead:
                 player.cur_move = player.speed
                 break
@@ -1696,7 +1697,8 @@ def main(load_game):
             u = Objects[u]
             while 1:
                 u.party_move(player, live_monsters())
-                sleep(0.1)
+                if Misc.combat:
+                    sleep(0.15)
                 refresh()
                 if not Misc.combat or u.cur_move<=0 or u.dead:
                     u.cur_move = u.speed
@@ -1705,7 +1707,8 @@ def main(load_game):
         for m in live_monsters():
             while 1:
                 m.ai_move(player)
-                sleep(0.1)
+                if Misc.combat:
+                    sleep(0.15)
                 refresh()
                 if not Misc.combat or m.cur_move<=0 or m.dead:
                     m.cur_move = m.speed
