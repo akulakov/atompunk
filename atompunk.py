@@ -1391,12 +1391,19 @@ class Being(BeingItemBase):
     def use(self, equip=False):
         ascii_letters = string.ascii_letters
         items = [(id,q) for id,q in self.inv.items() if q>0]
+
+        lst = []
         for n, (id,qty) in enumerate(items):
             item = Objects[id]
-            puts(0,n, f' {ascii_letters[n]}) {item.name:4} - {qty} ')
+            lst.append(f' {ascii_letters[n]}) {item.name:4} - {qty} ')
+        W = max(len(l) for l in lst)
+        blt.clear_area(2, 2, W, len(lst))
+        for n, ln in enumerate(lst):
+            puts(2, n+2, ln)
+
         refresh()
         ch = get_and_parse_key()
-        item = None
+        item_id = None
         if ch in ascii_letters:
             try:
                 item_id = items[string.ascii_letters.index(ch)][0]
@@ -1860,8 +1867,8 @@ def handle_ui(unit, battle=False):
                     print(e)
                 break
 
-    elif k == 'u':
-        unit.use()
+    elif k == 'U':
+        Misc.player.use()
 
     elif k == 'E':
         B.display(str(B.get_all(unit.loc)))
