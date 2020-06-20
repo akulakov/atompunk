@@ -270,7 +270,8 @@ class Blocks:
     ant = '\u2707'
     pistol = '\u2734'
     ammo = '-'
-    bolt1 = '~'
+    hit1 = '~'
+    hit2 = '\u2735'
 
 
 BLOCKING = [Blocks.rock, Type.door1, Type.blocking, Type.roof]
@@ -1406,6 +1407,7 @@ class Being(BeingItemBase):
     def dead(self):
         return not self.alive
 
+
 class Elder(Being):
     id = ID.elder
     char = Blocks.woman
@@ -1473,13 +1475,19 @@ class RangedWeapon(Weapon):
                 self.loaded -= 1
 
     def apply(self, being, tgt):
-        loc = being.loc
+        loc = tgt.loc
         dmg = randrange(*self.dmg)
         being.hit(tgt, dmg=dmg, type=Type.ranged_attack, descr=self.name)
         # Use some hit animation...
-        blt_put_obj(Blocks.bolt1, loc)
-        sleep(0.25)
-        blt_put_obj(being, loc)
+        blt_put_obj(Blocks.hit1, loc)
+        sleep(0.1)
+        blt_put_obj(Blocks.hit2, loc)
+        sleep(0.1)
+        blt_put_obj(tgt, loc)
+        sleep(0.1)
+        blt_put_obj(Blocks.hit2, loc)
+        sleep(0.1)
+        blt_put_obj(tgt, loc)
 
     def reload(self, inv):
         ammo = inv.get(self.ammo.type)
@@ -1488,6 +1496,7 @@ class RangedWeapon(Weapon):
             qty = min(need, ammo)
             self.loaded += qty
             inv[self.ammo.type] -= qty
+            status(f'Reloaded {self}')
 
 
 class Ammo(Item):
@@ -1500,7 +1509,8 @@ class FMJ223(Ammo):
     char = Blocks.ammo
 
 class Pistol223(RangedWeapon):
-    dmg = 20,30
+    # dmg = 20,30
+    dmg = 1,2
     min_st = 5
     cost = 4
     range = 30
@@ -1520,6 +1530,7 @@ class XPLevelMixin:
 class Ant(Being):
     speed = 6
     char = Blocks.ant
+    hp = 10
 
 class Player(PartyMixin, XPLevelMixin, Being):
     speed = 5
@@ -1654,6 +1665,7 @@ def main(load_game):
     blt.open()
     blt.set(f"window: resizeable=true, size=80x25, cellsize=auto, title='Atom Punk'; font: FreeMono.ttf, size={SIZE}")
     blt.set("input.filter={keyboard, mouse+}")
+    blt.set("input.mouse-cursor=false")
     blt.color("white")
     blt.composition(True)
     blt.clear()
