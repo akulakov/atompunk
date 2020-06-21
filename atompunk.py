@@ -109,6 +109,7 @@ class ID(Enum):
     player = auto()
     elder = auto()
     banize = auto()
+    chim = auto()
     kyssa = auto()
 
     arroyo_map_loc = auto()
@@ -1053,6 +1054,8 @@ class BeingItemBase:
 
 class Item(BeingItemBase):
     board_map = None
+    weight = 1
+    value_pound = 1
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1416,7 +1419,10 @@ class Being(BeingItemBase):
             Item('f', 'Vault 13 Flask', type=Type.vault13_flask)
             self.inv[Type.vault13_flask] += 1
 
-        if is_near('kyssa'):
+        elif is_near('chim'):
+            ShopUI(self.B, self, Objects.chim).sell_ui()
+
+        elif is_near('kyssa'):
             ch = self.talk(Objects.kyssa)
             if ch==1:
                 self.perception += 1
@@ -1611,7 +1617,6 @@ class Pistol223(RangedWeapon):
     # dmg = 20,30
     dmg = 1,2
     min_st = 5
-    cost = 4
     range = 30
     hit_aimed_burst_pts = (5,6,None)
     magazine_size = 5
@@ -1625,7 +1630,6 @@ class PipeRifle(RangedWeapon):
     # dmg = 20,30
     dmg = 5,12
     min_st = 5
-    cost = 4
     range = 20
     hit_aimed_burst_pts = (5,6,None)
     magazine_size = 1
@@ -1643,8 +1647,8 @@ class XPLevelMixin:
 class Ant(Being):
     speed = 6
     char = Blocks.ant
-    hp = 10
-    strength = 2
+    hp = 1
+    strength = 1
 
 class Player(PartyMixin, XPLevelMixin, Being):
     speed = 5
@@ -1694,12 +1698,11 @@ class Banize(NPC):
     char = Blocks.banize
     hp = 15
 
-
-class Banize(NPC):
+class Chim(NPC):
     speed = 4
-    id = ID.banize
+    id = ID.chim
     char = Blocks.banize
-
+    caps = 300
 
 class IndependentParty(Player):
     pass
@@ -1787,6 +1790,7 @@ def main(load_game):
     board_setup()
     player = Misc.player = Player(Boards.b_1.specials[1], board_map='1', id=ID.player)
     Banize(Boards.b_1.specials[1].mod_r(10), board_map='1')
+    Chim(Boards.b_1.specials[1].mod_r(5), board_map='1')
     Misc.B.draw(initial=1)
 
     def live_monsters():
@@ -1967,40 +1971,44 @@ class ShopUI:
         self.B.draw()
         to_sell = defaultdict(int)
         caps = 0
-        tcaps = trader.caps
+        tcaps = self.trader.caps
         inv = self.player.inv
 
         while 1:
             stats(self)
             blt.clear_area(5,5,60,10)
 
-            puts(5, 6 + i*2, Blocks.cursor)
+            puts(5, 8 + i, Blocks.circle3)
 
             x = y = 8
             items = [(type, q, Objects[type]) for type,q in inv.items() if q>0]
             ln = len(items)
-            for n, a, obj in enumerate(items):
-                puts(7, y+n, '{obj:30} {obj.cost()}caps')
+            for n, (_,qty,obj) in enumerate(items):
+                puts(7, y+n, f'{obj.name:30} {qty:-2} {obj.cost():-2}caps')
             puts(7, y+n+1, 'SELL')
 
             refresh()
             k = get_and_parse_key()
             if k in ('q', 'ESCAPE'):
-                for id, qty in to_sell:
+                for id, qty in to_sell.items():
                     inv[id] += qty
+                return
             elif k == 'ENTER':
-                trader.caps = tcaps
+                self.trader.caps = tcaps
                 self.player.caps += caps
-            elif k == 'DOWN':
+                return
+            elif k == 'UP':
                 i-=1
                 if i<0: i = ln
-            elif k == 'UP':
+            elif k == 'DOWN':
                 i+=1
                 if i>ln: i = 0
 
             # BUYBACK
             elif k == 'LEFT' and i<ln:
                 id, qty, obj = items[i]
+                if to_sell[id]<=0:
+                    continue
                 if blt.state(blt.TK_SHIFT):
                     n = to_sell[id]
                 else:
