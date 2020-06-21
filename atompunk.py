@@ -147,10 +147,15 @@ conv_str = {
     8: "Somewhere in the Wastes.. beyond that, none of the tribesmen know.",
     },
     ID.player: {1: 'The wastes have claimed your life..........'},
+    ID.kyssa: {1: 'The way you hold that spear.. uhh.. Let me teach you a few things about using spears.',
+               2: 'Okay',
+               3: 'NO! I know how to hold a spear, thank you very much.'
+              }
 }
 
 conversations = {
     ID.player: [1],
+    ID.kyssa: [1, [2,3]],
     ID.elder:
         [
             1, 2,
@@ -176,7 +181,9 @@ class Talk:
         multichoice = len(txt)
         lst = []
         for n, t in enumerate(txt):
-            lst.append(f'{n+1}) {self.conv_str[t[0]]}')
+            if isinstance(t, SEQ_TYPES):
+                t = t[0]
+            lst.append(f'{n+1}) {self.conv_str[t]}')
         txt = '\n'.join(lst)
         self.display(txt, False)
         for _ in range(3):
@@ -188,27 +195,30 @@ class Talk:
             except ValueError:
                 k = 0
             if k in range(1, multichoice+1):
-                return k-1
+                return k
 
     def talk(self):
         try: conv = self.current[self.ind]
         except Exception as e:
             print("talk(), e", e)
-            return None
+            return
         if isinstance(conv, SEQ_TYPES):
             self.choice_stack.append(conv)
             i = self.choose(conv)
             if i is None:
                 return
-            if i:
-                self.current = conv[i]
+            self.current = ch = conv[i-1]
+            print("ch", ch)
+            if isinstance(ch, int):
+                return i
             self.ind = 1
         else:
             rv = self.display(self.conv_str[conv])
-            if not rv: return None
+            if not rv: return
             self.ind += 1
         rv = self.talk()
-        if not rv: return None
+        print("rv", rv)
+        return rv
 
     def display(self, txt, wait=True):
         print ("in def display()", txt)
@@ -673,6 +683,7 @@ class Board:
     def board_1(self):
         self.load_map('1')
         Elder(self.specials[2], '1')
+        Kyssa(self.specials[3], '1')
         self.put(Type.pistol223, self.specials[2].mod_r())
         # self.put(self.specials[2].mod_r(), Objects[Type.pistol223])
         self.monsters.append(Ant(self.random_empty(), '1'))
@@ -1195,7 +1206,9 @@ class Being(BeingItemBase):
         if isinstance(being, int):
             being = Objects.get(being)
         if not yesno:
-            Talk(self.B, being).talk()
+            rv = Talk(self.B, being).talk()
+            if rv:
+                return rv
             if resp:
                 return prompt()
 
@@ -1385,7 +1398,6 @@ class Being(BeingItemBase):
         return dmg - x
 
     def action(self):
-        print ("in def is_near()")
         def is_near(id):
             return getattr(ID, id) in self.B.get_ids(self.B.neighbours(self.loc) + [self.loc])
 
@@ -1394,6 +1406,13 @@ class Being(BeingItemBase):
             self.caps += 150
             Item('f', 'Vault 13 Flask', type=Type.vault13_flask)
             self.inv[Type.vault13_flask] += 1
+        if is_near('kyssa'):
+            ch = self.talk(Objects.kyssa)
+            print("ch", ch)
+            if ch==1:
+                self.perception += 1
+                status('You gain 1 perception')
+                refresh()
 
     def use(self, equip=False):
         ascii_letters = string.ascii_letters
@@ -1592,6 +1611,7 @@ class Ant(Being):
     speed = 6
     char = Blocks.ant
     hp = 10
+    strength = 2
 
 class Player(PartyMixin, XPLevelMixin, Being):
     speed = 5
