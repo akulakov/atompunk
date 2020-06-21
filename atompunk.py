@@ -112,7 +112,7 @@ class ID(Enum):
     kyssa = auto()
 
     arroyo_map_loc = auto()
-    loc2_map_loc = auto()
+    klamath_map_loc = auto()
 
 
 class Type(Enum):
@@ -129,9 +129,11 @@ class Type(Enum):
 
     knife = auto()
     pistol223 = auto()
+    pipe_rifle = auto()
     spear = auto()
 
     fmj223 = auto()
+    mm10 = auto()
 
 
 conv_str = {
@@ -282,6 +284,7 @@ class Blocks:
     party = '\u25ce'
     ant = '\u2707'
     pistol = '\u2734'
+    rifle = '\u2736'
     ammo = '-'
     hit1 = '~'
     hit2 = '\u2735'
@@ -678,7 +681,7 @@ class Board:
     def board_map(self):
         self.load_map('map')
         MapLocation('Arroyo', self.specials[1], 'map', loc_map='1', id=ID.arroyo_map_loc)
-        MapLocation('Loc2', self.specials[2], 'map', loc_map='3', id=ID.loc2_map_loc)
+        MapLocation('Klamath', self.specials[2], 'map', loc_map='3', id=ID.klamath_map_loc)
 
     def board_1(self):
         self.load_map('1')
@@ -1018,7 +1021,10 @@ class BeingItemBase:
         return self.inv.get(id)
 
     def remove1(self, id, n=1):
+        print("id", id)
+        print("self.inv", self.inv)
         self.inv[id] -= n
+        print("self.inv", self.inv)
         if self.inv[id]<=0:
             del self.inv[id]
 
@@ -1406,13 +1412,13 @@ class Being(BeingItemBase):
             self.caps += 150
             Item('f', 'Vault 13 Flask', type=Type.vault13_flask)
             self.inv[Type.vault13_flask] += 1
+
         if is_near('kyssa'):
             ch = self.talk(Objects.kyssa)
-            print("ch", ch)
             if ch==1:
                 self.perception += 1
+                self.add_xp(50)
                 status('You gain 1 perception')
-                refresh()
 
     def use(self, equip=False):
         ascii_letters = string.ascii_letters
@@ -1421,6 +1427,7 @@ class Being(BeingItemBase):
         lst = []
         for n, (id,qty) in enumerate(items):
             item = Objects[id]
+            print("id", id)
             lst.append(f' {ascii_letters[n]}) {item.name:4} - {qty} ')
         W = max(len(l) for l in lst)
         blt.clear_area(2, 2, W, len(lst))
@@ -1569,13 +1576,16 @@ class RangedWeapon(Weapon):
         sleep(0.1)
         blt_put_obj(tgt, loc)
 
-    def reload(self, inv):
-        ammo = inv.get(self.ammo.type)
+    def reload(self, player):
+        ammo = player.inv.get(self.ammo.type)
         if ammo:
             need = self.magazine_size - self.loaded
+            print("need", need)
             qty = min(need, ammo)
+            print("qty", qty)
             self.loaded += qty
-            self.remove1(self.ammo.type, qty)
+            print("self.loaded", self.loaded)
+            player.remove1(self.ammo.type, qty)
             status(f'Reloaded {self}')
 
 
@@ -1586,6 +1596,12 @@ class FMJ223(Ammo):
     _name = '.223 FMJ'
     value = 4
     type = Type.fmj223
+    char = Blocks.ammo
+
+class MM10(Ammo):
+    _name = '10mm'
+    value = 4
+    type = Type.mm10
     char = Blocks.ammo
 
 class Pistol223(RangedWeapon):
@@ -1601,6 +1617,20 @@ class Pistol223(RangedWeapon):
     char = Blocks.pistol
     type = Type.pistol223
     ammo = FMJ223
+
+class PipeRifle(RangedWeapon):
+    # dmg = 20,30
+    dmg = 5,12
+    min_st = 5
+    cost = 4
+    range = 20
+    hit_aimed_burst_pts = (5,6,None)
+    magazine_size = 1
+    weight = 10
+    value_pound = 20
+    char = Blocks.rifle
+    type = Type.pipe_rifle
+    ammo = MM10
 
 class XPLevelMixin:
     xp = 0
@@ -1625,10 +1655,10 @@ class Player(PartyMixin, XPLevelMixin, Being):
         super().__init__(*args, **kwargs)
         self.party = [ID.banize]
         self.player = self
-        self.inv[Type.pistol223] = 1
+        self.inv[Type.pipe_rifle] = 1
         self.inv[Type.spear] = 1
         self.inv[Type.healing_powder] = 2
-        self.inv[Type.fmj223] = 20
+        self.inv[Type.mm10] = 20
 
     def __str__(self):
         return super().__str__()
@@ -1731,7 +1761,9 @@ def board_setup():
 
 def init_items():
     Pistol223()
+    PipeRifle()
     FMJ223()
+    MM10()
     HealingPowder()
     Spear()
 
@@ -1904,7 +1936,7 @@ def handle_ui(unit, battle=False):
         pl = Misc.player
         eqp = pl.equipped[0]
         if eqp:
-            Objects[eqp].reload(pl.inv)
+            Objects[eqp].reload(pl)
             pl.cur_move -= 1
 
     elif k == 'e':
