@@ -109,6 +109,7 @@ class ID(Enum):
     player = auto()
     elder = auto()
     banize = auto()
+    kyssa = auto()
 
     arroyo_map_loc = auto()
     loc2_map_loc = auto()
@@ -124,9 +125,11 @@ class Type(Enum):
     vault13_flask = auto()
     cap = auto()
     ranged_attack = auto()
+    healing_powder = auto()
 
     knife = auto()
     pistol223 = auto()
+    spear = auto()
 
     fmj223 = auto()
 
@@ -272,6 +275,9 @@ class Blocks:
     ammo = '-'
     hit1 = '~'
     hit2 = '\u2735'
+
+    npc2 = '\u2702'
+    spear = '\u008e'
 
 
 BLOCKING = [Blocks.rock, Type.door1, Type.blocking, Type.roof]
@@ -1073,6 +1079,7 @@ class Knife(Item):
 class HealingPowder(Item):
     char = Blocks.bottle
     heal = 5
+    type = Type.healing_powder
 
 class BlockingItem(Item):
     def __init__(self, *args, **kwargs):
@@ -1483,6 +1490,15 @@ class Weapon(Item):
             n += c
         return n
 
+class Spear(Weapon):
+    dmg = 3,10
+    min_st = 4
+    hit_aimed_burst_pts = (4,None,None)
+    weight = 4
+    value_pound = 20
+    char = Blocks.spear
+    type = Type.spear
+
 class RangedWeapon(Weapon):
     range = None
     loaded = 0
@@ -1590,6 +1606,8 @@ class Player(PartyMixin, XPLevelMixin, Being):
         self.party = [ID.banize]
         self.player = self
         self.inv[Type.pistol223] = 1
+        self.inv[Type.spear] = 1
+        self.inv[Type.healing_powder] = 2
         self.inv[Type.fmj223] = 20
 
     def __str__(self):
@@ -1613,6 +1631,17 @@ class Player(PartyMixin, XPLevelMixin, Being):
 class NPC(PartyMixin, XPLevelMixin, Being):
     pass
 
+class Kyssa(NPC):
+    id = ID.kyssa
+    char = Blocks.npc2
+
+class Banize(NPC):
+    speed = 4
+    id = ID.banize
+    char = Blocks.banize
+    hp = 15
+
+
 class Banize(NPC):
     speed = 4
     id = ID.banize
@@ -1624,31 +1653,6 @@ class IndependentParty(Player):
 
 class Bullet(Item):
     pass
-
-# class Shooter(Being):
-#     strength = 6
-#     defense = 3
-#     hp = 10
-#     speed = 4
-#     cost = 30
-
-#     def fire(self, B, player):
-#         char = Blocks.bullet
-#         a = Bullet(char, '', loc=self.loc)
-#         B.put(a)
-#         mod = 1
-#         for _ in range(self.range):
-#             a.move(self.last_dir)
-#             if B.found_type_at(Type.blocking, a.loc):
-#                 mod = 0.5
-#             being = B.get_being(a.loc)
-#             if being and being.alive and being.player!=player:
-#                 self.hit(being, ranged=1, mod=mod)
-#                 B.remove(being)     # shuffle on top of arrow
-#                 B.put(being)
-#                 break
-#             blt_put_obj(a)
-#             sleep(0.15)
 
 class Saves:
     saves = {}
@@ -1705,6 +1709,11 @@ def board_setup():
     ]
     Misc.B = Boards.b_1
 
+def init_items():
+    Pistol223()
+    FMJ223()
+    HealingPowder()
+    Spear()
 
 def main(load_game):
     blt.open()
@@ -1717,9 +1726,7 @@ def main(load_game):
     if not os.path.exists('saves'):
         os.mkdir('saves')
     Misc.is_game = 1
-    Pistol223()
-    FMJ223()
-    print("Objects[Type.fmj223]", Objects[Type.fmj223])
+    init_items()
 
     ok=1
     board_setup()
