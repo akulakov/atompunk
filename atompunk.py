@@ -1064,6 +1064,9 @@ class Item(BeingItemBase):
     def __repr__(self):
         return f'<I: {self.char}>'
 
+    def cost(self):
+        return self.weight * self.value_pound
+
     def move(self, dir, n=1):
         my,mx = dict(h=(0,-1), l=(0,1), y=(-1,-1), u=(-1,1), b=(1,-1), n=(1,1))[dir]
         if mx==1 and my and self.loc.y%2==0:
@@ -1952,6 +1955,77 @@ def handle_ui(unit, battle=False):
 
     B.draw(battle = (not unit.is_player))
     return 1
+
+class ShopUI:
+    def __init__(self, B, player, trader):
+        self.B = B
+        self.trader = trader
+        self.player = player
+
+    def sell_ui(self):
+        i = 0
+        self.B.draw()
+        to_sell = defaultdict(int)
+        caps = 0
+        tcaps = trader.caps
+        inv = self.player.inv
+
+        while 1:
+            stats(self)
+            blt.clear_area(5,5,60,10)
+
+            puts(5, 6 + i*2, Blocks.cursor)
+
+            x = y = 8
+            items = [(type, q, Objects[type]) for type,q in inv.items() if q>0]
+            ln = len(items)
+            for n, a, obj in enumerate(items):
+                puts(7, y+n, '{obj:30} {obj.cost()}caps')
+            puts(7, y+n+1, 'SELL')
+
+            refresh()
+            k = get_and_parse_key()
+            if k in ('q', 'ESCAPE'):
+                for id, qty in to_sell:
+                    inv[id] += qty
+            elif k == 'ENTER':
+                trader.caps = tcaps
+                self.player.caps += caps
+            elif k == 'DOWN':
+                i-=1
+                if i<0: i = ln
+            elif k == 'UP':
+                i+=1
+                if i>ln: i = 0
+
+            # BUYBACK
+            elif k == 'LEFT' and i<ln:
+                id, qty, obj = items[i]
+                if blt.state(blt.TK_SHIFT):
+                    n = to_sell[id]
+                else:
+                    n = 1
+                inv[id] += n
+                to_sell[id] -= n
+                total = n * obj.cost()
+                tcaps += total
+                caps -= total
+
+            # SELL
+            elif k == 'RIGHT' and i<ln and items[i][1]>0:
+                id, qty, obj = items[i]
+                if obj.cost() > tcaps:
+                    continue
+
+                if blt.state(blt.TK_SHIFT):
+                    n = int(math.floor(tcaps / obj.cost()))
+                else:
+                    n = 1
+                inv[id] -= n
+                to_sell[id] += n
+                total = n * obj.cost()
+                tcaps -= total
+                caps += total
 
 
 def editor(_map):
