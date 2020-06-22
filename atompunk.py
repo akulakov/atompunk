@@ -203,7 +203,6 @@ class Talk:
     def talk(self):
         try: conv = self.current[self.ind]
         except Exception as e:
-            print("talk(), e", e)
             return
         if isinstance(conv, SEQ_TYPES):
             self.choice_stack.append(conv)
@@ -211,7 +210,6 @@ class Talk:
             if i is None:
                 return
             self.current = ch = conv[i-1]
-            print("ch", ch)
             if isinstance(ch, int):
                 return i
             self.ind = 1
@@ -220,11 +218,9 @@ class Talk:
             if not rv: return
             self.ind += 1
         rv = self.talk()
-        print("rv", rv)
         return rv
 
     def display(self, txt, wait=True):
-        print ("in def display()", txt)
         self.B.draw()
         x = min(self.loc.x, 60)
 
@@ -413,6 +409,17 @@ def status(msg):
 
 def blt_esc(txt):
     return txt.replace('[','[[').replace(']',']]')
+
+def make_choice(B, txt, choices):
+    status(txt + ' > ')
+    B.draw()
+    while 1:
+        k = get_and_parse_key()
+        if not k: continue
+        if k in ('ENTER', 'ESCAPE'):
+            return
+        if k in choices:
+            return k
 
 def prompt():
     mp = ''
@@ -690,7 +697,7 @@ class Board:
         Kyssa(self.specials[3], '1')
         self.put(Type.pistol223, self.specials[2].mod_r())
         # self.put(self.specials[2].mod_r(), Objects[Type.pistol223])
-        self.monsters.append(Ant(self.random_empty(), '1'))
+        # self.monsters.append(Ant(self.random_empty(), '1'))
         self.monsters.append(Ant(self.random_empty(), '1'))
 
     def board_2(self):
@@ -1022,10 +1029,7 @@ class BeingItemBase:
         return self.inv.get(id)
 
     def remove1(self, id, n=1):
-        print("id", id)
-        print("self.inv", self.inv)
         self.inv[id] -= n
-        print("self.inv", self.inv)
         if self.inv[id]<=0:
             del self.inv[id]
 
@@ -1067,8 +1071,9 @@ class Item(BeingItemBase):
     def __repr__(self):
         return f'<I: {self.char}>'
 
-    def cost(self):
-        return self.weight * self.value_pound
+    def cost(self, markup=0):
+        c = self.weight * self.value_pound
+        return c + c*markup
 
     def move(self, dir, n=1):
         my,mx = dict(h=(0,-1), l=(0,1), y=(-1,-1), u=(-1,1), b=(1,-1), n=(1,1))[dir]
@@ -1289,7 +1294,6 @@ class Being(BeingItemBase):
             refresh()
             if self.cur_move:
                 self.cur_move -= 1
-            print("self,self.is_player", self,self.is_player)
             if self.is_player:
                 self.handle_player_move(new)
             return True, True
@@ -1297,8 +1301,6 @@ class Being(BeingItemBase):
 
     def handle_directional_turn(self, dir, loc):
         """Turn char based on which way it's facing."""
-        print("Blocks.location", Blocks.location)
-        print(self, "self.char", self.char)
         if self.char == Blocks.party:
             return
         name = self.__class__.__name__.lower()
@@ -1322,7 +1324,6 @@ class Being(BeingItemBase):
                 top_obj = Objects[top_obj.id]
 
         for x in reversed(items):
-            print("x", x)
             if x.id in pick_up or x.type in pick_up or isinstance(x, Weapon):
                 if self.is_player:
                     self.inv[x.id or x.type] += 1
@@ -1420,7 +1421,7 @@ class Being(BeingItemBase):
             self.inv[Type.vault13_flask] += 1
 
         elif is_near('chim'):
-            ShopUI(self.B, self, Objects.chim).sell_ui()
+            ShopUI(self.B, self, Objects.chim).shop_ui()
 
         elif is_near('kyssa'):
             ch = self.talk(Objects.kyssa)
@@ -1436,7 +1437,6 @@ class Being(BeingItemBase):
         lst = []
         for n, (id,qty) in enumerate(items):
             item = Objects[id]
-            print("id", id)
             lst.append(f' {ascii_letters[n]}) {item.name:4} - {qty} ')
         W = max(len(l) for l in lst)
         blt.clear_area(2, 2, W, len(lst))
@@ -1507,10 +1507,7 @@ class Weapon(Item):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        print('adding Weapon to registry')
         Objects[self.type] = self
-        print("self.type", self.type)
-        print("Objects[self.type]", Objects[self.type])
 
 
     @property
@@ -1589,11 +1586,8 @@ class RangedWeapon(Weapon):
         ammo = player.inv.get(self.ammo.type)
         if ammo:
             need = self.magazine_size - self.loaded
-            print("need", need)
             qty = min(need, ammo)
-            print("qty", qty)
             self.loaded += qty
-            print("self.loaded", self.loaded)
             player.remove1(self.ammo.type, qty)
             status(f'Reloaded {self}')
 
@@ -1702,6 +1696,7 @@ class Chim(NPC):
     speed = 4
     id = ID.chim
     char = Blocks.banize
+    markup = 0.1
     caps = 300
 
 class IndependentParty(Player):
@@ -1966,13 +1961,26 @@ class ShopUI:
         self.trader = trader
         self.player = player
 
-    def sell_ui(self):
+    def shop_ui(self):
+        ch = make_choice(self.B, 'B)uy S)ell', 'bs')
+        if ch == 'b':
+            self._shop_ui(False)
+        elif ch == 's':
+            self._shop_ui()
+
+
+    def _shop_ui(self, sell=True):
         i = 0
         self.B.draw()
-        to_sell = defaultdict(int)
-        caps = 0
-        tcaps = self.trader.caps
-        inv = self.player.inv
+        transaction = defaultdict(int)
+        seller_caps = 0
+        buyer_caps = self.trader.caps if sell else self.player.caps
+        markup = -self.trader.markup if sell else self.trader.markup
+        inv = self.player.inv if sell else self.trader.inv
+        tgt_inv = self.trader.inv if sell else self.player.inv
+        if not any(inv.values()):
+            status('Nothing to '+('sell' if sell else 'buy'))
+            return
 
         while 1:
             stats(self)
@@ -1981,21 +1989,28 @@ class ShopUI:
             puts(5, 8 + i, Blocks.circle3)
 
             x = y = 8
-            items = [(type, q, Objects[type]) for type,q in inv.items() if q>0]
+            items = [(type, q, Objects[type]) for type,q in inv.items()]
             ln = len(items)
             for n, (_,qty,obj) in enumerate(items):
-                puts(7, y+n, f'{obj.name:30} {qty:-2} {obj.cost():-2}caps')
-            puts(7, y+n+1, 'SELL')
+                puts(7, y+n, f'{obj.name:30} {qty:-2} {obj.cost(markup):-2}caps')
+            puts(7, y+n+1, 'SELL' if sell else 'BUY')
 
             refresh()
             k = get_and_parse_key()
             if k in ('q', 'ESCAPE'):
-                for id, qty in to_sell.items():
+                # rollback transaction
+                for id, qty in transaction.items():
                     inv[id] += qty
                 return
             elif k == 'ENTER':
-                self.trader.caps = tcaps
-                self.player.caps += caps
+                if sell:
+                    self.trader.caps = buyer_caps
+                    self.player.caps += seller_caps
+                else:
+                    self.player.caps = buyer_caps
+                    self.trader.caps += seller_caps
+                for id, qty in transaction.items():
+                    tgt_inv[id] += qty
                 return
             elif k == 'UP':
                 i-=1
@@ -2007,33 +2022,33 @@ class ShopUI:
             # BUYBACK
             elif k == 'LEFT' and i<ln:
                 id, qty, obj = items[i]
-                if to_sell[id]<=0:
+                if transaction[id]<=0:
                     continue
                 if blt.state(blt.TK_SHIFT):
-                    n = to_sell[id]
+                    n = transaction[id]
                 else:
                     n = 1
                 inv[id] += n
-                to_sell[id] -= n
-                total = n * obj.cost()
-                tcaps += total
-                caps -= total
+                transaction[id] -= n
+                total = n * obj.cost(markup)
+                buyer_caps += total
+                seller_caps -= total
 
             # SELL
             elif k == 'RIGHT' and i<ln and items[i][1]>0:
                 id, qty, obj = items[i]
-                if obj.cost() > tcaps:
+                if obj.cost() > buyer_caps:
                     continue
 
                 if blt.state(blt.TK_SHIFT):
-                    n = int(math.floor(tcaps / obj.cost()))
+                    n = int(math.floor(buyer_caps / obj.cost(markup)))
                 else:
                     n = 1
                 inv[id] -= n
-                to_sell[id] += n
+                transaction[id] += n
                 total = n * obj.cost()
-                tcaps -= total
-                caps += total
+                buyer_caps -= total
+                seller_caps += total
 
 
 def editor(_map):
