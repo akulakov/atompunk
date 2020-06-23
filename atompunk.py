@@ -111,9 +111,11 @@ class ID(Enum):
     banize = auto()
     chim = auto()
     kyssa = auto()
+    aykin = auto()
 
     arroyo_map_loc = auto()
     klamath_map_loc = auto()
+    den_map_loc = auto()
 
 
 class Type(Enum):
@@ -149,15 +151,20 @@ conv_str = {
     7: "Where is Vault 13?",
     8: "Somewhere in the Wastes.. beyond that, none of the tribesmen know.",
     },
+
     ID.player: {1: 'The wastes have claimed your life..........'},
     ID.kyssa: {1: 'The way you hold that spear.. uhh.. Let me teach you a few things about using spears.',
                2: 'Okay',
                3: 'NO! I know how to hold a spear, thank you very much.'
-              }
+              },
+    ID.aykin: {1: 'Can you tell me anything about nearby towns?',
+               2: "There's the Den, but I hardly ever been there. And other folks here, aside from traders, will tell you the same. Travel is dangerous in this here country.",
+              },
 }
 
 conversations = {
     ID.player: [1],
+    ID.aykin: [1,2],
     ID.kyssa: [1, [2,3]],
     ID.elder:
         [
@@ -688,23 +695,28 @@ class Board:
 
     def board_map(self):
         self.load_map('map')
-        MapLocation('Arroyo', self.specials[1], 'map', loc_map='1', id=ID.arroyo_map_loc)
-        MapLocation('Klamath', self.specials[2], 'map', loc_map='3', id=ID.klamath_map_loc)
+        MapLocation('Arroyo', self.specials[1], 'map', loc_map='1', id=ID.arroyo_map_loc, hidden=False)
+        MapLocation('Klamath', self.specials[2], 'map', loc_map='3', id=ID.klamath_map_loc, hidden=False)
+        MapLocation('Den', self.specials[3], 'map', loc_map='den1', id=ID.den_map_loc)
 
     def board_1(self):
         self.load_map('1')
         Elder(self.specials[2], '1')
         Kyssa(self.specials[3], '1')
         self.put(Type.pistol223, self.specials[2].mod_r())
-        # self.put(self.specials[2].mod_r(), Objects[Type.pistol223])
         # self.monsters.append(Ant(self.random_empty(), '1'))
         self.monsters.append(Ant(self.random_empty(), '1'))
 
     def board_2(self):
+        # Arroyo 2
         self.load_map('2')
 
     def board_3(self):
         self.load_map('3')
+        Aykin(self.specials[1], '3')
+
+    def board_den1(self):
+        self.load_map('den1')
 
     def screen_loc_to_map(self, loc):
         x,y=loc
@@ -741,7 +753,8 @@ class Board:
                 x,y = loc_to_scr(x, y)
                 if isinstance(a, (ID, Type)):
                     a = Objects[a]
-                puts(x,y,a)
+                if self._map!='map' or not getattr(a, 'hidden', False):
+                    puts(x,y,a)
 
         if not editor:
             for bld, fill, door in self.buildings:
@@ -1093,10 +1106,12 @@ loc_to_map_location = {}
 
 class MapLocation(BeingItemBase):
     char = Blocks.location
+    hidden = True
 
-    def __init__(self, *args, loc_map=None, **kwargs):
+    def __init__(self, *args, hidden=True, loc_map=None, **kwargs):
         super().__init__(None, *args, **kwargs)
         self.loc_map = loc_map
+        self.hidden = hidden
         map_name_to_map_location[loc_map] = self.id
         loc_to_map_location[self.loc] = self.id
 
@@ -1121,7 +1136,7 @@ class PartyMixin:
         return sum(u.hp for u in self.live_party())
 
     def live_party(self):
-        return list(u for u in filter(None, self.party) if Objects[u].alive)
+        return list(u for u in filter(None, self.party or []) if Objects[u].alive)
 
     def party_move(self, player, monsters):
         B = self.B
@@ -1423,6 +1438,10 @@ class Being(BeingItemBase):
         elif is_near('chim'):
             ShopUI(self.B, self, Objects.chim).shop_ui()
 
+        elif is_near('aykin'):
+            self.talk(Objects.aykin)
+            Objects.den_map_loc.hidden = False
+
         elif is_near('kyssa'):
             ch = self.talk(Objects.kyssa)
             if ch==1:
@@ -1490,10 +1509,6 @@ class Being(BeingItemBase):
     def dead(self):
         return not self.alive
 
-
-class Elder(Being):
-    id = ID.elder
-    char = Blocks.woman
 
 class Weapon(Item):
     dmg = None
@@ -1682,8 +1697,16 @@ class Player(PartyMixin, XPLevelMixin, Being):
 class NPC(PartyMixin, XPLevelMixin, Being):
     pass
 
+class Elder(NPC):
+    id = ID.elder
+    char = Blocks.woman
+
 class Kyssa(NPC):
     id = ID.kyssa
+    char = Blocks.npc2
+
+class Aykin(NPC):
+    id = ID.aykin
     char = Blocks.npc2
 
 class Banize(NPC):
@@ -1748,6 +1771,9 @@ def board_setup():
     Boards.b_3 = Board(Loc(0,4), '3')
     Boards.b_3.board_3()
 
+    Boards.b_den1 = Board(Loc(0,6), 'den1')
+    Boards.b_den1.board_den1()
+
     Boards.b_map = Board(Loc(0,0), 'map')
     Boards.b_map.board_map()
 
@@ -1757,6 +1783,8 @@ def board_setup():
         ['1', '2', None],
         [None, None, None],
         ['3', None, None],
+        [None, None, None],
+        ['den1', None, None],
     ]
     Misc.B = Boards.b_1
 
