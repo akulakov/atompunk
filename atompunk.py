@@ -112,6 +112,8 @@ class ID(Enum):
     chim = auto()
     kyssa = auto()
     aykin = auto()
+    arette = auto()
+    arette2 = auto()
 
     arroyo_map_loc = auto()
     klamath_map_loc = auto()
@@ -157,15 +159,39 @@ conv_str = {
                2: 'Okay',
                3: 'NO! I know how to hold a spear, thank you very much.'
               },
+
     ID.aykin: {1: 'Can you tell me anything about nearby towns?',
                2: "There's the Den, but I hardly ever been there. And other folks here, aside from traders, will tell you the same. Travel is dangerous in this here country.",
               },
+
+    ID.arette: {1: 'Hello {}, how is the Wasteland treating you today?',
+                2: "Can't complain!",
+                3: "Wait, how do you know my name?",
+                4: "Your travels are causing something of a stir. You are being noticed.",
+                5: "Noticed by who?",
+                6: "By anyone and everyone. People paying attention. People looking for someone they can use, someone who can help, or harm, someone who may need to be stopped if things spin out of hand.",
+                7: "That explains exactly nothing. If you wish to warn me, give me something tangible. Answer some questions, because this is starting to feel like a waste of time.",
+                8: "Very well. You can ask one question.",
+                9: "Where can I find the GECK?",
+                10: "Where is Vault 13?",
+                11: "Where can I find Vic?",
+                12: "Hah, that's an old one. Nobody even knows about them, and a few people who do would give up their right hand to get their left hand on one.",
+                13: "That's not something I can tell you right now.",
+                14: "He ran into some trouble with the Slaverunners. You'll find him with them, if my information is still up to date. But beware: those fellows don't kid.",
+              },
+
+    ID.arette2: {1: "There's nothing more I can tell you."},
+
 }
 
 conversations = {
     ID.player: [1],
     ID.aykin: [1,2],
     ID.kyssa: [1, [2,3]],
+    ID.arette2: [1],
+    ID.arette: [1, 2, 3, 4, 5, 6, 7, 8,
+                [[9,12], [10,13], [11,14]],
+               ],
     ID.elder:
         [
             1, 2,
@@ -186,6 +212,7 @@ class Talk:
         self.ind = 0
         self.current = self.conversations
         self.choice_stack = []
+        self.last_conv = None
 
     def choose(self, txt):
         multichoice = len(txt)
@@ -193,7 +220,8 @@ class Talk:
         for n, t in enumerate(txt):
             if isinstance(t, SEQ_TYPES):
                 t = t[0]
-            lst.append(f'{n+1}) {self.conv_str[t]}')
+            txt = self.conv_str[t].format(Misc.name)
+            lst.append(f'{n+1}) {txt}')
         txt = '\n'.join(lst)
         self.display(txt, False)
         for _ in range(3):
@@ -208,7 +236,8 @@ class Talk:
                 return k
 
     def talk(self):
-        try: conv = self.current[self.ind]
+        try:
+            self.last_conv = conv = self.current[self.ind]
         except Exception as e:
             return
         if isinstance(conv, SEQ_TYPES):
@@ -228,6 +257,7 @@ class Talk:
         return rv
 
     def display(self, txt, wait=True):
+        txt = txt.format(Misc.name)
         self.B.draw()
         x = min(self.loc.x, 60)
 
@@ -305,6 +335,7 @@ class Misc:
     current_unit = None
     player = None
     combat = False
+    name = 'Nameless'
 
 def mkcell():
     return [Blocks.blank]
@@ -717,6 +748,8 @@ class Board:
 
     def board_den1(self):
         self.load_map('den1')
+        Arette(self.specials[1], 'den1')
+        self.doors[0].type = Type.blocking
 
     def screen_loc_to_map(self, loc):
         x,y=loc
@@ -1233,16 +1266,16 @@ class Being(BeingItemBase):
         else:
             self.cur_move = 0
 
-    def talk(self, being, yesno=False, resp=False):
+    def talk(self, being, id=None, yesno=False, resp=False):
         """Messages, dialogs, yes/no, prompt for response, multiple choice replies."""
         if isinstance(being, int):
             being = Objects.get(being)
         if not yesno:
-            rv = Talk(self.B, being).talk()
-            if rv:
-                return rv
+            talk = Talk(self.B, being, id)
+            rv = talk.talk()
             if resp:
                 return prompt()
+            return rv, talk.last_conv
 
 
     def _move(self, dir):
@@ -1441,6 +1474,14 @@ class Being(BeingItemBase):
         elif is_near('aykin'):
             self.talk(Objects.aykin)
             Objects.den_map_loc.hidden = False
+
+        elif is_near('arette') and Objects.arette.state==0:
+            _, tid = self.talk(Objects.arette)
+            if tid >= 12:
+                Objects.arette.state = 1
+
+        elif is_near('arette') and Objects.arette.state==1:
+            self.talk(Objects.arette, ID.arette2)
 
         elif is_near('kyssa'):
             ch = self.talk(Objects.kyssa)
@@ -1709,6 +1750,10 @@ class Aykin(NPC):
     id = ID.aykin
     char = Blocks.npc2
 
+class Arette(NPC):
+    id = ID.arette
+    char = Blocks.npc2
+
 class Banize(NPC):
     speed = 4
     id = ID.banize
@@ -1787,6 +1832,7 @@ def board_setup():
         ['den1', None, None],
     ]
     Misc.B = Boards.b_1
+    Misc.B = Boards.b_den1
 
 def init_items():
     Pistol223()
@@ -1811,7 +1857,8 @@ def main(load_game):
 
     ok=1
     board_setup()
-    player = Misc.player = Player(Boards.b_1.specials[1], board_map='1', id=ID.player)
+    # player = Misc.player = Player(Boards.b_1.specials[1], board_map='1', id=ID.player)
+    player = Misc.player = Player(Boards.b_den1.specials[1].mod_l(2), board_map='den1', id=ID.player)
     Banize(Boards.b_1.specials[1].mod_r(10), board_map='1')
     Chim(Boards.b_1.specials[1].mod_r(5), board_map='1')
     Misc.B.draw(initial=1)
