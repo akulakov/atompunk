@@ -114,6 +114,7 @@ class ID(Enum):
     aykin = auto()
     arette = auto()
     arette2 = auto()
+    st_junien = auto()
 
     arroyo_map_loc = auto()
     klamath_map_loc = auto()
@@ -131,13 +132,16 @@ class Type(Enum):
     cap = auto()
     ranged_attack = auto()
     healing_powder = auto()
+    stimpack = auto()
 
     knife = auto()
     pistol223 = auto()
     pipe_rifle = auto()
+    hunting_rifle = auto()
     spear = auto()
 
     fmj223 = auto()
+    magnum44fmj = auto()
     mm10 = auto()
 
 
@@ -322,6 +326,7 @@ class Blocks:
     ammo = '-'
     hit1 = '~'
     hit2 = '\u2735'
+    stimpack = '\u244c'
 
     npc2 = '\u2702'
     spear = '\u008e'
@@ -749,7 +754,11 @@ class Board:
     def board_den1(self):
         self.load_map('den1')
         Arette(self.specials[1], 'den1')
-        self.doors[0].type = Type.blocking
+        StJunien(self.specials[2], 'den1')
+        self.doors[1].type = Type.blocking
+
+    def board_den2(self):
+        self.load_map('den2')
 
     def screen_loc_to_map(self, loc):
         x,y=loc
@@ -1106,6 +1115,7 @@ class Item(BeingItemBase):
     board_map = None
     weight = 1
     value_pound = 1
+    _cost = 0
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1118,7 +1128,7 @@ class Item(BeingItemBase):
         return f'<I: {self.char}>'
 
     def cost(self, markup=0):
-        c = self.weight * self.value_pound
+        c = self._cost or self.weight * self.value_pound
         return c + c*markup
 
     def move(self, dir, n=1):
@@ -1148,14 +1158,6 @@ class MapLocation(BeingItemBase):
         map_name_to_map_location[loc_map] = self.id
         loc_to_map_location[self.loc] = self.id
 
-class Knife(Item):
-    char = Blocks.knife
-    type = Type.knife
-
-class HealingPowder(Item):
-    char = Blocks.bottle
-    heal = 5
-    type = Type.healing_powder
 
 class BlockingItem(Item):
     def __init__(self, *args, **kwargs):
@@ -1471,6 +1473,9 @@ class Being(BeingItemBase):
         elif is_near('chim'):
             ShopUI(self.B, self, Objects.chim).shop_ui()
 
+        elif is_near('st_junien'):
+            ShopUI(self.B, self, Objects.st_junien).shop_ui()
+
         elif is_near('aykin'):
             self.talk(Objects.aykin)
             Objects.den_map_loc.hidden = False
@@ -1514,8 +1519,9 @@ class Being(BeingItemBase):
         if not item_id: return
 
         obj = Objects[item_id]
-        if isinstance(obj, HealingPowder):
-            self.hp = min(self.hp+obj.heal, self.max_hp)
+        if hasattr(obj, 'heal'):
+            heal = obj.heal if isinstance(obj.heal, int) else randrange(obj.heal)
+            self.hp = min(self.hp+heal, self.max_hp)
             self.remove1(item_id)
             status('You feel better')
 
@@ -1651,17 +1657,41 @@ class RangedWeapon(Weapon):
 class Ammo(Item):
     pass
 
+class Knife(Item):
+    char = Blocks.knife
+    type = Type.knife
+
+class HealingPowder(Item):
+    char = Blocks.bottle
+    heal = 5
+    type = Type.healing_powder
+
+class Stimpack(Item):
+    char = Blocks.stimpack
+    heal = 5, 20
+    type = Type.stimpack
+    _cost = 175
+
 class FMJ223(Ammo):
-    _name = '.223 FMJ'
-    value = 4
+    _name = '.223 FMJ (50)'
+    value = 200
     type = Type.fmj223
     char = Blocks.ammo
+    magazine_size = 50
+    weight = 2
 
 class MM10(Ammo):
     _name = '10mm'
     value = 4
     type = Type.mm10
     char = Blocks.ammo
+
+class Magnum44FMJ(Ammo):
+    _name = '.44 Magnum FMJ'
+    value = 50
+    type = Type.magnum44fmj
+    char = Blocks.ammo
+    magazine_size = 20
 
 class Pistol223(RangedWeapon):
     # dmg = 20,30
@@ -1689,6 +1719,19 @@ class PipeRifle(RangedWeapon):
     type = Type.pipe_rifle
     ammo = MM10
 
+class HuntingRifle(RangedWeapon):
+    # dmg = 20,30
+    dmg = 8,20
+    min_st = 5
+    range = 40
+    hit_aimed_burst_pts = (5,6,None)
+    magazine_size = 10
+    weight = 9
+    value_pound = 111
+    char = Blocks.rifle
+    type = Type.hunting_rifle
+    ammo = FMJ223
+
 class XPLevelMixin:
     xp = 0
     level = 1
@@ -1714,7 +1757,7 @@ class Player(PartyMixin, XPLevelMixin, Being):
         self.player = self
         self.inv[Type.pipe_rifle] = 1
         self.inv[Type.spear] = 1
-        self.inv[Type.healing_powder] = 2
+        self.inv[Type.stimpack] = 2
         self.inv[Type.mm10] = 20
 
     def __str__(self):
@@ -1754,6 +1797,17 @@ class Arette(NPC):
     id = ID.arette
     char = Blocks.npc2
 
+class StJunien(NPC):
+    id = ID.st_junien
+    char = Blocks.npc2
+    caps = 58
+    inv = {
+        Type.stimpack: 2,
+        Type.hunting_rifle: 1,
+        Type.mm10: 5,
+        Type.fmj223: 3,
+      }
+
 class Banize(NPC):
     speed = 4
     id = ID.banize
@@ -1768,9 +1822,6 @@ class Chim(NPC):
     caps = 300
 
 class IndependentParty(Player):
-    pass
-
-class Bullet(Item):
     pass
 
 class Saves:
@@ -1819,6 +1870,9 @@ def board_setup():
     Boards.b_den1 = Board(Loc(0,6), 'den1')
     Boards.b_den1.board_den1()
 
+    Boards.b_den2 = Board(Loc(1,6), 'den2')
+    Boards.b_den2.board_den2()
+
     Boards.b_map = Board(Loc(0,0), 'map')
     Boards.b_map.board_map()
 
@@ -1829,7 +1883,7 @@ def board_setup():
         [None, None, None],
         ['3', None, None],
         [None, None, None],
-        ['den1', None, None],
+        ['den1', 'den2', None],
     ]
     Misc.B = Boards.b_1
     Misc.B = Boards.b_den1
@@ -1837,9 +1891,11 @@ def board_setup():
 def init_items():
     Pistol223()
     PipeRifle()
+    HuntingRifle()
     FMJ223()
     MM10()
     HealingPowder()
+    Stimpack()
     Spear()
 
 def main(load_game):
