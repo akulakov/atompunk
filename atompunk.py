@@ -121,6 +121,8 @@ class ID(Enum):
     leblanc = auto()
     vic = auto()
 
+    broken_radio = auto()
+
     arroyo_map_loc = auto()
     klamath_map_loc = auto()
     den_map_loc = auto()
@@ -424,7 +426,7 @@ def chk_b_oob(loc, x=0, y=0):
     h = len(board_grid)
     w = len(board_grid[0])
     newx, newy = loc.x+x, loc.y+y
-    return 0 <= newy <= h-1 and 0 <= newx <= w-1
+    return 0 <= newy <= h-1 and 0 <= newx <= w-1 and board_grid[newy][newx]
 
 def debug(*args):
     debug_log.write(str(args) + '\n')
@@ -712,9 +714,10 @@ class Board:
         cell.remove(obj if obj in cell else (obj.id or obj.type))
 
     def get_all_obj(self, loc):
-        return [Objects[n] or n for n in self.B[loc.y][loc.x]
+        objs = [Objects[n] or n for n in self.B[loc.y][loc.x]
                 if not isinstance(n, str)
                ]
+        return [o for o in objs if not isinstance(o,Player)]
 
     def get_obj(self, loc):
         return last(self.get_all_obj(loc))
@@ -752,6 +755,7 @@ class Board:
 
                     elif char==Blocks.cupboard:
                         c = Cupboard(self, loc)
+                        self.containers.append(c)
 
                     elif char=='g':
                         if for_editor:
@@ -818,6 +822,8 @@ class Board:
     def board_3(self):
         self.load_map('3')
         Aykin(self.specials[1], '3')
+        self.containers[0].inv = {ID.broken_radio: 1}
+
 
     def board_den1(self):
         self.load_map('den1')
@@ -1201,7 +1207,7 @@ class Item(BeingItemBase):
         return super().__str__()
 
     def __repr__(self):
-        return f'<I: {self.char}>'
+        return f'<n={self.name}: {self.char}>'
 
     def cost(self, markup=0):
         c = self._cost or self.weight * self.value_pound
@@ -1536,13 +1542,25 @@ class Being(BeingItemBase):
         x = 0
         return dmg - x
 
+    def loot(self, cont):
+        items = {k:v for k,v in cont.inv.items() if v}
+        lst = []
+        for x, qty in items.items():
+            self.inv[x] += cont.inv[x]
+            cont.inv[x] = 0
+            lst.append(f'{Objects[x]} ({Objects[x].name})')
+        status('You found {}'.format(', '.join(lst)))
+        if not items:
+            status(f'{cont.name} is empty')
+
     def action(self):
         def is_near(id):
             return getattr(ID, id) in self.B.get_ids_types(self.B.neighbours(self.loc) + [self.loc], 'id')
 
         def is_near_type(type):
-            print( self.B.get_ids_types(self.B.neighbours(self.loc) + [self.loc], 'type') )
             return getattr(Type, type) in self.B.get_ids_types(self.B.neighbours(self.loc) + [self.loc], 'type')
+
+        top_obj = self.B.get_obj(self.loc)
 
         if is_near('elder'):
             self.talk(Objects.elder)
@@ -1552,6 +1570,10 @@ class Being(BeingItemBase):
 
         elif is_near('chim'):
             ShopUI(self.B, self, Objects.chim).shop_ui()
+
+        elif top_obj and top_obj.type==Type.container:
+            c = self.B.get_obj(self.loc)
+            self.loot(c)
 
         elif is_near_type('guard'):
             g = first(o for o in self.B.neighbours_obj(self.loc) if o.type==Type.guard)
@@ -1765,6 +1787,10 @@ class RangedWeapon(Weapon):
 
 class Ammo(Item):
     pass
+
+class BrokenRadio(Item):
+    char = 'r'
+    id = ID.broken_radio
 
 class Knife(Item):
     char = Blocks.knife
@@ -2020,7 +2046,8 @@ def board_setup():
         ['den1', 'den2', None],
     ]
     # Misc.B = Boards.b_1
-    Misc.B = Boards.b_den2
+    # Misc.B = Boards.b_den2
+    Misc.B = Boards.b_3
 
 def init_items():
     Pistol223()
@@ -2031,6 +2058,7 @@ def init_items():
     HealingPowder()
     Stimpack()
     Spear()
+    BrokenRadio()
 
 def main(load_game):
     blt.open()
@@ -2048,7 +2076,7 @@ def main(load_game):
     ok=1
     board_setup()
     # player = Misc.player = Player(Boards.b_1.specials[1], board_map='1', id=ID.player)
-    player = Misc.player = Player(Boards.b_den1.specials[1].mod_l(2), board_map='den2', id=ID.player)
+    player = Misc.player = Player(Boards.b_den1.specials[1].mod_l(2), board_map='3', id=ID.player)
     Banize(Boards.b_1.specials[1].mod_r(10), board_map='1')
     Chim(Boards.b_1.specials[1].mod_r(5), board_map='1')
     Misc.B.draw(initial=1)
@@ -2143,10 +2171,13 @@ def handle_ui(unit, battle=False):
                 Misc.B = B = unit.move_to_board(maploc.loc_map, loc=Loc(0,0))
                 unit.char = Blocks.player_f
         elif unit.is_player and not battle:
-            map_loc = map_name_to_map_location[unit.B._map]
-            loc = Objects[map_loc].loc
-            Misc.B = B = unit.move_to_board('map', loc=loc)
-            unit.char = Blocks.party
+            map_loc = map_name_to_map_location.get(unit.B._map)
+            if map_loc:
+                loc = Objects[map_loc].loc
+                Misc.B = B = unit.move_to_board('map', loc=loc)
+                unit.char = Blocks.party
+            else:
+                status('Can not exit town from this location, try the starting location')
 
     elif k == 'o':
         name = prompt()
