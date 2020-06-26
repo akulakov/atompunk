@@ -116,8 +116,10 @@ class ID(Enum):
     arette2 = auto()
     st_junien = auto()
     c_guard = auto()
-    # c_guard2 = auto()
-    # c_guard3 = auto()
+    metzger = auto()
+    lignac = auto()
+    leblanc = auto()
+    vic = auto()
 
     arroyo_map_loc = auto()
     klamath_map_loc = auto()
@@ -198,11 +200,44 @@ conv_str = {
         {1: "This is our turf, in case you're wonderin'"},
         ],
 
+    ID.lignac: {1: "What is this place?",
+                2: "Slaver's guild.",
+                3: "What do you do?",
+                4: "What the fuck do you think, we buy and sell slaves.",
+                5: "Where do you get slaves?",
+                6: "Ah, you know.. here and there.. and everywhere. I guess.",
+                7: "Who runs this place?",
+                8: "Metzger. He's in the building to the west. If you need to talk to him, make sure it's something important, he's got a lot on his plate and he's really pissed at that Vic guy. Oh yeah, and he's got a short temper.",
+                9: "Why is he pissed at Vic?",
+                10: "That's above my pay grade. You can ask him, if you dare.",
+               },
+
+    ID.metzger: {1: "The fuck.. this is not a tribal drumming circle you know. What the fuck are you doing here?, - and make it quick.",
+                2: "Do you know someone named Vic?",
+                3: "Yes, he pissed me off big time with his radio.. tried to run away, too",
+                4: "What radio?",
+                5: "What the fuck do you know about radios, tribal? Get out of my sight.",
+                6: "Can I see Vic?",
+                7: "Yeah, knock yourself out, talk to this useless shit. I should probably just strangle him, that would suit him right. If you do that I won't even mind.",
+                8: "That was a joke, touch any of my property and I sell you for dog meat. Or worse.",
+                9: "What's worse than dog meat?",
+                10: "Gecko meat, I guess. Too oily.",
+               },
+
+    ID.leblanc: {
+        1: 'Alright what do you need tribal?',
+        2: 'Metzger said I can see Vic..',
+        3: "Whoa he's sending tribals in now? Is it some kind of old injun tor-chure? Well the door's right there, do you need a red 'arpet too?'",
+    },
+
 }
 
 conversations = {
     Type.guard: [1],
     ID.player: [1],
+    ID.lignac: list(range(1,11)),
+    ID.metzger: list(range(1,11)),
+    ID.leblanc: [1,2,3],
     ID.aykin: [1,2],
     ID.kyssa: [1, [2,3]],
     ID.arette2: [1],
@@ -349,6 +384,7 @@ class Blocks:
     stimpack = '\u244c'
 
     npc2 = '\u2702'
+    npc3 = '\u26fd' # Metzger
     spear = '\u008e'
 
 
@@ -755,7 +791,6 @@ class Board:
             lst.extend( Loc(a.x, y) for y in range(a.y, b.y+1) )
         return lst
 
-
     def line(self, a, b):
         if a.x==b.x:
             return [Loc(a.x, y) for y in range(a.y, b.y+1)]
@@ -792,6 +827,11 @@ class Board:
 
     def board_den2(self):
         self.load_map('den2')
+        Metzger(self.specials[1], 'den2')
+        Vic(self.specials[2], 'den2')
+        Leblanc(self.specials[3], 'den2')
+        Lignac(self.specials[4], 'den2')
+        self.doors[1].type = Type.blocking
 
     def screen_loc_to_map(self, loc):
         x,y=loc
@@ -1515,11 +1555,21 @@ class Being(BeingItemBase):
 
         elif is_near_type('guard'):
             g = first(o for o in self.B.neighbours_obj(self.loc) if o.type==Type.guard)
-            print("g", g)
             self.talk(g, Type.guard, rand=True)
 
         elif is_near('st_junien'):
             ShopUI(self.B, self, Objects.st_junien).shop_ui()
+
+        elif is_near('lignac'):
+            self.talk(Objects.lignac)
+
+        elif is_near('metzger') and self.charisma>=5:
+            self.talk(Objects.metzger)
+            Objects.leblanc.state=1
+
+        elif is_near('leblanc') and Objects.leblanc.state==1:
+            self.talk(Objects.leblanc)
+            self.B.doors[1].type = Type.door
 
         elif is_near('aykin'):
             self.talk(Objects.aykin)
@@ -1858,6 +1908,27 @@ class Aykin(NPC):
 
 class Arette(NPC):
     id = ID.arette
+    char = Blocks.npc2
+
+#--
+class Metzger(NPC):
+    id = ID.metzger
+    char = Blocks.npc3
+
+class Lignac(NPC):
+    # Metzger's capo
+    id = ID.lignac
+    char = Blocks.npc2
+
+class Leblanc(NPC):
+    # Metzger's guard
+    id = ID.leblanc
+    char = Blocks.npc2
+
+#--
+
+class Vic(NPC):
+    id = ID.vic
     char = Blocks.npc2
 
 class StJunien(NPC):
