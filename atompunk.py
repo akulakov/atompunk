@@ -115,6 +115,9 @@ class ID(Enum):
     arette = auto()
     arette2 = auto()
     st_junien = auto()
+    c_guard = auto()
+    # c_guard2 = auto()
+    # c_guard3 = auto()
 
     arroyo_map_loc = auto()
     klamath_map_loc = auto()
@@ -128,6 +131,7 @@ class Type(Enum):
     container = auto()
     blocking = auto()
     player = auto()
+    guard = auto()
     vault13_flask = auto()
     cap = auto()
     ranged_attack = auto()
@@ -186,9 +190,18 @@ conv_str = {
 
     ID.arette2: {1: "There's nothing more I can tell you."},
 
+    Type.guard: [
+        {1: 'Move along, now'},
+        {1: 'Nothing to see here'},
+        {1: "Whatcha lookin' at?"},
+        {1: "Oh look, a tribal.. haven't seen one in a while"},
+        {1: "This is our turf, in case you're wonderin'"},
+        ],
+
 }
 
 conversations = {
+    Type.guard: [1],
     ID.player: [1],
     ID.aykin: [1,2],
     ID.kyssa: [1, [2,3]],
@@ -208,15 +221,21 @@ conversations = {
     }
 
 class Talk:
-    def __init__(self, B, being, id=None):
+    def __init__(self, B, being, id_or_type=None, rand=False):
         self.B = B
-        id = id or being.id
+        id = id_or_type or being.id
         self.conv_str, self.conversations = conv_str[id], conversations[id]
+        print( isinstance(self.conv_str, SEQ_TYPES) , rand)
+        if isinstance(self.conv_str, SEQ_TYPES) and rand:
+            self.conv_str = choice(self.conv_str)
+        print("self.conv_str", self.conv_str)
+
         self.loc = being.loc
         self.ind = 0
         self.current = self.conversations
         self.choice_stack = []
         self.last_conv = None
+        self.conv = None
 
     def choose(self, txt):
         multichoice = len(txt)
@@ -273,7 +292,7 @@ class Talk:
         offset_y = lines if self.loc.y<8 else -lines
 
         y = max(0, self.loc.y+offset_y)
-        W = max(len(l) for l in txt_lines)
+        W = max(len(l) for l in txt_lines) + 1
         blt.clear_area(x+1, y+1, W, len(txt_lines))
         puts(x+1,y+1, txt)
         refresh()
@@ -309,6 +328,7 @@ class Blocks:
     player_b = '\u26d8'
     rubbish = '\u26c1'
     circle3 = '\u25cc'  # dotted
+    circle4 = '\u25cf'
     woman = '\u2700'
     knife = '\u26e0'
     cupboard = '\u269a'
@@ -392,14 +412,16 @@ def getitem(it, ind=0, default=None):
     try: return it[ind]
     except IndexError: return default
 
-def puts(x, y, text):
-    _puts(x, y, text)
+def puts(x, y, text, color=None):
+    _puts(x, y, text, color=color)
 
 def puts2(x, y, text):
     _puts(x, y+HEIGHT, text)
 
-def _puts(x,y,a):
+def _puts(x,y,a, color=None):
     if isinstance(a,str):
+        if color:
+            a = f'[color={color}]{a}[/color]'
         blt.puts(x,y,a)
     else:
         if a.color:
@@ -567,13 +589,13 @@ class Board:
         refresh()
         blt.read()
 
-    def get_ids(self, loc):
+    def get_ids_types(self, loc, attr='id'):
         if isinstance(loc, Loc):
             loc = [loc]
         lst = []
         for l in loc:
             lst.extend(self.get_all(l))
-        lst = [getattr(x, 'id', None) or x for x in lst]
+        lst = [getattr(x, attr, None) or x for x in lst]
         return lst
 
     def gen_graph(self, tgt):
@@ -670,6 +692,7 @@ class Board:
         self.doors = doors = []
         self.specials = specials = defaultdict(list)
         self.buildings = []
+        self.guards = []
         BL=Blocks
         roofs = []
 
@@ -690,6 +713,16 @@ class Board:
                     elif char==Blocks.roof:
                         Item(Blocks.roof, '', loc, self._map, type=Type.roof)
                         roofs.append(loc)
+
+                    elif char==Blocks.cupboard:
+                        c = Cupboard(self, loc)
+
+                    elif char=='g':
+                        if for_editor:
+                            self.put(char, loc)
+                        else:
+                            g = Guard(loc, self._map)
+                            self.guards.append(g)
 
                     elif char==Blocks.door:
                         d = Item(Blocks.door, 'door', loc, self._map, type=Type.door)
@@ -818,6 +851,9 @@ class Board:
         else:
             l.extend([loc.mod_u().mod_r(), loc.mod_d().mod_r()])
         return [loc for loc in l if chk_oob(loc)]
+
+    def neighbours_obj(self, loc):
+        return filter(None, [self.get_obj(l) for l in self.neighbours(loc)])
 
     def put(self, obj, loc=None):
         """
@@ -1268,12 +1304,12 @@ class Being(BeingItemBase):
         else:
             self.cur_move = 0
 
-    def talk(self, being, id=None, yesno=False, resp=False):
+    def talk(self, being, id_or_type=None, yesno=False, resp=False, rand=False):
         """Messages, dialogs, yes/no, prompt for response, multiple choice replies."""
         if isinstance(being, int):
             being = Objects.get(being)
         if not yesno:
-            talk = Talk(self.B, being, id)
+            talk = Talk(self.B, being, id_or_type, rand)
             rv = talk.talk()
             if resp:
                 return prompt()
@@ -1462,7 +1498,11 @@ class Being(BeingItemBase):
 
     def action(self):
         def is_near(id):
-            return getattr(ID, id) in self.B.get_ids(self.B.neighbours(self.loc) + [self.loc])
+            return getattr(ID, id) in self.B.get_ids_types(self.B.neighbours(self.loc) + [self.loc], 'id')
+
+        def is_near_type(type):
+            print( self.B.get_ids_types(self.B.neighbours(self.loc) + [self.loc], 'type') )
+            return getattr(Type, type) in self.B.get_ids_types(self.B.neighbours(self.loc) + [self.loc], 'type')
 
         if is_near('elder'):
             self.talk(Objects.elder)
@@ -1472,6 +1512,11 @@ class Being(BeingItemBase):
 
         elif is_near('chim'):
             ShopUI(self.B, self, Objects.chim).shop_ui()
+
+        elif is_near_type('guard'):
+            g = first(o for o in self.B.neighbours_obj(self.loc) if o.type==Type.guard)
+            print("g", g)
+            self.talk(g, Type.guard, rand=True)
 
         elif is_near('st_junien'):
             ShopUI(self.B, self, Objects.st_junien).shop_ui()
@@ -1548,6 +1593,9 @@ class Being(BeingItemBase):
     def neighbours(self):
         return self.B.neighbours(self.loc)
 
+    def neighbours_obj(self):
+        return filter(None, [self.B.get_obj(l) for l in self.B.neighbours(self.loc)])
+
     @property
     def alive(self):
         return self.hp>0
@@ -1556,6 +1604,17 @@ class Being(BeingItemBase):
     def dead(self):
         return not self.alive
 
+
+class Cupboard(Item):
+    def __init__(self, B, loc):
+        super().__init__(Blocks.cupboard, 'cupboard', loc, type=Type.container, board_map=B._map)
+        # ugly: this doesn't work in the map editor because `objects` dict doesn't have these items
+        try:
+            if random()>.5:
+                self.add1(Type.caps, randrange(1,3))
+            elif random()>.7:
+                self.add1(Type.healing_powder)
+        except: pass
 
 class Weapon(Item):
     dmg = None
@@ -1781,6 +1840,10 @@ class Player(PartyMixin, XPLevelMixin, Being):
 class NPC(PartyMixin, XPLevelMixin, Being):
     pass
 
+class Guard(NPC):
+    type = Type.guard
+    char = Blocks.npc2
+
 class Elder(NPC):
     id = ID.elder
     char = Blocks.woman
@@ -1885,8 +1948,8 @@ def board_setup():
         [None, None, None],
         ['den1', 'den2', None],
     ]
-    Misc.B = Boards.b_1
-    Misc.B = Boards.b_den1
+    # Misc.B = Boards.b_1
+    Misc.B = Boards.b_den2
 
 def init_items():
     Pistol223()
@@ -1914,7 +1977,7 @@ def main(load_game):
     ok=1
     board_setup()
     # player = Misc.player = Player(Boards.b_1.specials[1], board_map='1', id=ID.player)
-    player = Misc.player = Player(Boards.b_den1.specials[1].mod_l(2), board_map='den1', id=ID.player)
+    player = Misc.player = Player(Boards.b_den1.specials[1].mod_l(2), board_map='den2', id=ID.player)
     Banize(Boards.b_1.specials[1].mod_r(10), board_map='1')
     Chim(Boards.b_1.specials[1].mod_r(5), board_map='1')
     Misc.B.draw(initial=1)
@@ -2201,7 +2264,7 @@ def editor(_map):
                 fp.write(prefix + (Blocks.blank + ' ')*WIDTH + '\n')
     B = Board(None, _map)
     setattr(Boards, 'b_'+_map, B)
-    B.load_map(_map, 1)
+    B.load_map(_map, for_editor=1)
     B.draw(editor=1)
 
     while 1:
@@ -2218,13 +2281,13 @@ def editor(_map):
                 mx=0
 
             for _ in range(n):
+                if chk_oob(loc.mod(mx,my)):
+                    loc = loc.mod(mx,my)
                 if brush:
                     if brush=='T':
                         B.B[loc.y][loc.x] = [choice((Blocks.tree1, Blocks.tree2))]
                     else:
                         B.B[loc.y][loc.x] = [brush]
-                if chk_oob(loc.mod(mx,my)):
-                    loc = loc.mod(mx,my)
 
         elif k == ' ':
             brush = None
@@ -2232,6 +2295,8 @@ def editor(_map):
             brush = Blocks.blank
         elif k == 'r':
             brush = Blocks.rock
+        elif k == 'g':
+            B.put(k, loc)
         elif k == 'R':
             brush = Blocks.roof
             B.put(Blocks.roof, loc)
@@ -2241,6 +2306,9 @@ def editor(_map):
             B.put(k, loc)
         elif k == 'w':
             Item(B, Blocks.water, 'water', loc)
+        elif k == 'c':
+            # Item(B, Blocks.cupboard, 'cupboard', loc)
+            c = Cupboard(B, loc)
         elif k == 'x':
             Item(Blocks.hex, '', loc, B._map)
         elif k == 'B':
@@ -2287,8 +2355,8 @@ def editor(_map):
 
         B.draw(editor=1)
         x = loc.x*2 + (0 if loc.y%2==0 else 1)
-        blt.clear_area(x,loc.y,1,1)
-        puts(x, loc.y, Blocks.circle3)
+        # blt.clear_area(x,loc.y,1,1)
+        puts(x, loc.y, Blocks.circle4, color='blue')
         if brush==Blocks.blank:
             tool = 'eraser'
         elif brush==Blocks.rock:
