@@ -642,6 +642,8 @@ class Board:
         self.clear()
         self.labels = []
         self.monsters = []
+        self.allies = []
+        self.groups = []
         self.loc = loc
         self._map = str(_map)
 
@@ -659,12 +661,15 @@ class Board:
             for x, cell in enumerate(row):
                 yield Loc(x,y), cell
 
-    def find_empty_neighbour(self, loc):
+    def find_empty_neighbour(self, loc, seen=None):
+        seen = seen or []
+        seen.append(loc)
         for l in self.neighbours(loc):
-            if self[l] is Blocks.blank:
-                return l
-            else:
-                return self.find_empty_neighbour(l)
+            if l not in seen:
+                if self[l] is Blocks.blank:
+                    return l
+                else:
+                    return self.find_empty_neighbour(l, seen)
 
     def display(self, txt):
         if not txt: return
@@ -882,11 +887,12 @@ class Board:
 
     def board_den2(self):
         self.load_map('den2')
-        Metzger(self.specials[1], 'den2')
+        m = Metzger(self.specials[1], 'den2')
+        self.groups.append(Group(self, [m]+self.guards))
         Vic(self.specials[2], 'den2')
         Leblanc(self.specials[3], 'den2')
         Lignac(self.specials[4], 'den2')
-        # self.doors[1].type = Type.blocking
+        self.doors[1].type = Type.blocking
 
     def screen_loc_to_map(self, loc):
         x,y=loc
@@ -1228,12 +1234,16 @@ class BeingItemBase:
         if specials_ind is not None:
             loc = to_B.specials[specials_ind]
         self.B.remove(self)
+        if self.is_player:
+            self.B.groups = [g for g in self.B.groups if not g.player_group]
         self.loc = loc
         to_B.put(self)
         self.board_map = to_B._map
         if to_B._map != 'map':
             for id in (self.live_party() or []):
                 Objects[id].move_to_board(_map, loc=to_B.find_empty_neighbour(loc))
+            if self.is_player:
+                to_B.groups.append(Group(to_B, [self]+self.live_party()))
         return to_B
 
     @property
@@ -1326,6 +1336,13 @@ def handle_load_board(unit, rv):
 
 class Armor:
     pass
+
+class Group:
+    player_group = False
+
+    def __init__(self, B, beings, enemies=None):
+        self.B, self.beings, self.enemies = B, set(beings), enemies or []
+        self.player_group = any(b.is_player for b in beings)
 
 class Being(BeingItemBase):
     hp = 1
@@ -1458,7 +1475,8 @@ class Being(BeingItemBase):
                     return None
 
                 self.handle_directional_turn(dir, new)
-                if self.player != being.player:
+                not_player = not self.is_player
+                if not_player or (self.is_player and being not in self.party):
                     self.attack(being, melee=True)
                 if self.cur_move:
                     self.cur_move -= 1
@@ -2019,7 +2037,7 @@ class Arette(NPC):
 class Metzger(NPC):
     id = ID.metzger
     char = Blocks.npc3
-    state = 1
+    # state = 1
 
 class Lignac(NPC):
     # Metzger's capo
