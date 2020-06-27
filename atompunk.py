@@ -119,6 +119,7 @@ class ID(Enum):
     c_guard = auto()
     metzger = auto()
     metzger2 = auto()
+    metzger3 = auto()
     lignac = auto()
     leblanc = auto()
     vic = auto()
@@ -229,6 +230,8 @@ conv_str = {
                 10: "Gecko meat, I guess. Too oily.",
                },
 
+    ID.metzger3: {1: "If you keep hanging around here I'll take Vic back and you along with him, bud."},
+
     ID.metzger2: {
         1: "Well, that asshole did finally fix the radio, something he should have done a damn long time ago.",
         2: "Will you let him go?",
@@ -269,6 +272,7 @@ conversations = {
     ID.lignac: list(range(1,11)),
     ID.metzger: list(range(1,11)),
     ID.metzger2: list(range(1,5)) + [[5,6]],
+    ID.metzger3: [1],
     ID.leblanc: [1,2,3],
 
     ID.vic: [1,2,3,4,5,
@@ -339,17 +343,11 @@ class Talk:
             return
 
         if self.disabled and isinstance(conv, SEQ_TYPES):
-            print("conv", conv)
             conv = [c for c in conv if c[0] not in self.disabled]
-            print("conv", conv)
             if len(conv)==1:
                 self.current = conv[0]
                 self.ind = 0
                 conv = self.current[self.ind]
-            print("self.current", self.current)
-            print("self.ind", self.ind)
-            print("conv", conv)
-            print()
 
         if isinstance(conv, SEQ_TYPES):
             self.choice_stack.append(conv)
@@ -358,7 +356,7 @@ class Talk:
                 return
             self.current = ch = conv[i-1]
             if isinstance(ch, int):
-                return i
+                return ch
             self.ind = 1
         else:
             rv = self.display(self.conv_str[conv])
@@ -666,7 +664,7 @@ class Board:
             if self[l] is Blocks.blank:
                 return l
             else:
-                return find_empty_neighbour(l)
+                return self.find_empty_neighbour(l)
 
     def display(self, txt):
         if not txt: return
@@ -888,7 +886,7 @@ class Board:
         Vic(self.specials[2], 'den2')
         Leblanc(self.specials[3], 'den2')
         Lignac(self.specials[4], 'den2')
-        self.doors[1].type = Type.blocking
+        # self.doors[1].type = Type.blocking
 
     def screen_loc_to_map(self, loc):
         x,y=loc
@@ -1362,7 +1360,9 @@ class Being(BeingItemBase):
 
     def __init__(self, loc=None, board_map=None, put=True, id=None, name=None, state=0, char='?',
                  color=None):
-        self.loc, self.board_map, self._name, self.state, self.color  = loc, board_map, name, state, color
+        self.loc, self.board_map, self._name, self.color = loc, board_map, name, color
+        if state:
+            self.state = state
         self.char = self.char or char
         self.inv = defaultdict(int)
         self.cur_move = self.speed
@@ -1637,14 +1637,14 @@ class Being(BeingItemBase):
             disabled = None
             if not self.inv.get(ID.broken_radio):
                 disabled = [7]
-            _, tid = self.talk(Objects.vic, disabled=disabled)
+            tid, _ = self.talk(Objects.vic, disabled=disabled)
             if tid>=9:
                 self.inv[ID.broken_radio] -= 1
                 Objects.metzger.state = 1
 
         elif is_near('vic') and Objects.vic.state==1:
             self.talk(Objects.vic, ID.vic2)
-            self.party.append(Objects.vic)
+            self.party.append(ID.vic)
 
         elif is_near('lignac'):
             self.talk(Objects.lignac)
@@ -1654,11 +1654,17 @@ class Being(BeingItemBase):
             Objects.leblanc.state=1
 
         elif is_near('metzger') and Objects.metzger.state==1:
-            _, tid = self.talk(Objects.metzger, ID.metzger2, disabled=(5 if self.caps<1000 else None))
+            tid, _ = self.talk(Objects.metzger, ID.metzger2, disabled=(5 if self.caps<1000 else None))
+            print("tid", tid)
             if tid==5:
                 self.caps -= 1000
+                print('paying 1k for Vic')
+                Objects.metzger.state = 2
                 Objects.metzger.caps += 1000
                 Objects.vic.state = 1
+
+        elif is_near('metzger') and Objects.metzger.state==2:
+            self.talk(Objects.metzger, ID.metzger3)
 
         elif is_near('leblanc') and Objects.leblanc.state==1:
             self.talk(Objects.leblanc)
