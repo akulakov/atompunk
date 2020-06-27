@@ -15,6 +15,7 @@ from enum import Enum, auto
 
 """
 Atom Punk
+* Vic conv, fix radio
 """
 
 HEIGHT = 16
@@ -117,9 +118,11 @@ class ID(Enum):
     st_junien = auto()
     c_guard = auto()
     metzger = auto()
+    metzger2 = auto()
     lignac = auto()
     leblanc = auto()
     vic = auto()
+    vic2 = auto()
 
     broken_radio = auto()
 
@@ -226,10 +229,36 @@ conv_str = {
                 10: "Gecko meat, I guess. Too oily.",
                },
 
+    ID.metzger2: {
+        1: "Well, that asshole did finally fix the radio, something he should have done a damn long time ago.",
+        2: "Will you let him go?",
+        3: "Yeah, I'm sick of seeing his sorry ass mug. Never hear a grown man whine so much, what the fuck is it with these traders? They whine and whine, and then whine again, just on the account slave's life is not as cushy.",
+        4: "..and then I thought, well where is the business sense in all that? Sure I can let him go if he ponies up a very reasonable 1k caps, why I bet he moves that much in a week. You know, that old tech can get pricey, I can tell you that. I sure wish it warn't, but yes it does cost you.",
+        5: "Here's 1k caps",
+        6: "I'm sure he can scrounge that much. It's his freedom after all, that should be some incentive right there!",
+     },
+
     ID.leblanc: {
         1: 'Alright what do you need tribal?',
         2: 'Metzger said I can see Vic..',
         3: "Whoa he's sending tribals in now? Is it some kind of old injun tor-chure? Well the door's right there, do you need a red 'arpet too?'",
+    },
+
+    ID.vic: {
+        1: 'Hey, who are you? You look like a tribal, not a slaverunner.',
+        2: "I'm looking for Vault 13.",
+        3: "I can probably help you with that, but you can see what a fix I'm in right now.. I can hardly help myself, even to just stay alive when guys like Metzger are around. Did he think I can fix radios with just thin air? I don't even know how radios work. How does a radio work!? (Vic looks absorbed in thought for a moment.)",
+        4: "Why does Metzger hate you so much anyway?",
+        5: "He doesn't hate me. At least I hope he doesn't. This is how he treats people he's disinterested in, those who are hated fare much worse. But my current troubles stem from my unfortunate attempt to sell him a few services that this geckoshit radio should have made easy to do, if it didn't break down like filthy dung of a desert critter with poor hygiene.",
+        6: "Any way to fix that heap of shi.. I mean dung",
+        7: "Would this radio help?",
+        8: "Have you ever tried to fix a pile of dung? How would that even work? Well, that's an academic question, because this particular piece of crap radio can probably be fixed if I only had the old broken radio I could use for parts. I have it in my shed in Klamath.",
+        9: "This is amazing! I told that idiot to just send a couple of his hounds to Klamath to fetch this but he was afraid of a trap. Why would an old peaceful trader set a trap for the likes of him? You saved my life, man! I will fix it now in a couple of hours.",
+    },
+
+    ID.vic2: {
+        1: "I got the word from the guard that you paid the 1k caps, that was really generous of you. I was starting to feel I'll never see the sunlight again, and never sit down on the grass and just spend a few hours enjoying the passing of time. Look at these grey walls! That would be my life for the next 20 years, unless they'd sell me to the quarries. Time flies fast in the quarries...",
+        2: "I'll help you with your search, like I promised. I don't know where the vault is exactly, but I'll help you track down a few old things in the neighbouring towns that will set you on the right way. Let's go!",
     },
 
 }
@@ -239,7 +268,15 @@ conversations = {
     ID.player: [1],
     ID.lignac: list(range(1,11)),
     ID.metzger: list(range(1,11)),
+    ID.metzger2: list(range(1,5)) + [[5,6]],
     ID.leblanc: [1,2,3],
+
+    ID.vic: [1,2,3,4,5,
+             [[6,8], [7,9]]
+            ],
+
+    ID.vic2: [1,2],
+
     ID.aykin: [1,2],
     ID.kyssa: [1, [2,3]],
     ID.arette2: [1],
@@ -257,15 +294,14 @@ conversations = {
         ],
     }
 
+
 class Talk:
-    def __init__(self, B, being, id_or_type=None, rand=False):
+    def __init__(self, B, being, id_or_type=None, rand=False, disabled=None):
         self.B = B
         id = id_or_type or being.id
         self.conv_str, self.conversations = conv_str[id], conversations[id]
-        print( isinstance(self.conv_str, SEQ_TYPES) , rand)
         if isinstance(self.conv_str, SEQ_TYPES) and rand:
             self.conv_str = choice(self.conv_str)
-        print("self.conv_str", self.conv_str)
 
         self.loc = being.loc
         self.ind = 0
@@ -273,6 +309,7 @@ class Talk:
         self.choice_stack = []
         self.last_conv = None
         self.conv = None
+        self.disabled = disabled
 
     def choose(self, txt):
         multichoice = len(txt)
@@ -300,6 +337,20 @@ class Talk:
             self.last_conv = conv = self.current[self.ind]
         except Exception as e:
             return
+
+        if self.disabled and isinstance(conv, SEQ_TYPES):
+            print("conv", conv)
+            conv = [c for c in conv if c[0] not in self.disabled]
+            print("conv", conv)
+            if len(conv)==1:
+                self.current = conv[0]
+                self.ind = 0
+                conv = self.current[self.ind]
+            print("self.current", self.current)
+            print("self.ind", self.ind)
+            print("conv", conv)
+            print()
+
         if isinstance(conv, SEQ_TYPES):
             self.choice_stack.append(conv)
             i = self.choose(conv)
@@ -1350,12 +1401,12 @@ class Being(BeingItemBase):
         else:
             self.cur_move = 0
 
-    def talk(self, being, id_or_type=None, yesno=False, resp=False, rand=False):
+    def talk(self, being, id_or_type=None, yesno=False, resp=False, rand=False, disabled=None):
         """Messages, dialogs, yes/no, prompt for response, multiple choice replies."""
         if isinstance(being, int):
             being = Objects.get(being)
         if not yesno:
-            talk = Talk(self.B, being, id_or_type, rand)
+            talk = Talk(self.B, being, id_or_type, rand, disabled)
             rv = talk.talk()
             if resp:
                 return prompt()
@@ -1582,12 +1633,32 @@ class Being(BeingItemBase):
         elif is_near('st_junien'):
             ShopUI(self.B, self, Objects.st_junien).shop_ui()
 
+        elif is_near('vic') and Objects.vic.state==0:
+            disabled = None
+            if not self.inv.get(ID.broken_radio):
+                disabled = [7]
+            _, tid = self.talk(Objects.vic, disabled=disabled)
+            if tid>=9:
+                self.inv[ID.broken_radio] -= 1
+                Objects.metzger.state = 1
+
+        elif is_near('vic') and Objects.vic.state==1:
+            self.talk(Objects.vic, ID.vic2)
+            self.party.append(Objects.vic)
+
         elif is_near('lignac'):
             self.talk(Objects.lignac)
 
-        elif is_near('metzger') and self.charisma>=5:
+        elif is_near('metzger') and self.charisma>=5 and Objects.metzger.state==0:
             self.talk(Objects.metzger)
             Objects.leblanc.state=1
+
+        elif is_near('metzger') and Objects.metzger.state==1:
+            _, tid = self.talk(Objects.metzger, ID.metzger2, disabled=(5 if self.caps<1000 else None))
+            if tid==5:
+                self.caps -= 1000
+                Objects.metzger.caps += 1000
+                Objects.vic.state = 1
 
         elif is_near('leblanc') and Objects.leblanc.state==1:
             self.talk(Objects.leblanc)
@@ -1885,12 +1956,14 @@ class Player(PartyMixin, XPLevelMixin, Being):
     level_tiers = enumerate((500,2000,5000,10000,15000,25000,50000,100000,150000))
     char = Blocks.player_l
     hp = 40
+    caps = 1200
 
     def __init__(self, *args, player=None, party=None, spells=None, **kwargs ):
         super().__init__(*args, **kwargs)
         self.party = [ID.banize]
         self.player = self
         self.inv[Type.pipe_rifle] = 1
+        self.inv[ID.broken_radio] = 1
         self.inv[Type.spear] = 1
         self.inv[Type.stimpack] = 2
         self.inv[Type.mm10] = 20
@@ -1940,6 +2013,7 @@ class Arette(NPC):
 class Metzger(NPC):
     id = ID.metzger
     char = Blocks.npc3
+    state = 1
 
 class Lignac(NPC):
     # Metzger's capo
@@ -2046,8 +2120,8 @@ def board_setup():
         ['den1', 'den2', None],
     ]
     # Misc.B = Boards.b_1
-    # Misc.B = Boards.b_den2
     Misc.B = Boards.b_3
+    Misc.B = Boards.b_den2
 
 def init_items():
     Pistol223()
@@ -2076,7 +2150,7 @@ def main(load_game):
     ok=1
     board_setup()
     # player = Misc.player = Player(Boards.b_1.specials[1], board_map='1', id=ID.player)
-    player = Misc.player = Player(Boards.b_den1.specials[1].mod_l(2), board_map='3', id=ID.player)
+    player = Misc.player = Player(Boards.b_den1.specials[1].mod_l(2), board_map='den2', id=ID.player)
     Banize(Boards.b_1.specials[1].mod_r(10), board_map='1')
     Chim(Boards.b_1.specials[1].mod_r(5), board_map='1')
     Misc.B.draw(initial=1)
