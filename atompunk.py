@@ -641,7 +641,6 @@ class Board:
     def __init__(self, loc, _map):
         self.clear()
         self.labels = []
-        self.monsters = []
         self.allies = []
         self.groups = []
         self.loc = loc
@@ -665,7 +664,8 @@ class Board:
         seen = seen or []
         seen.append(loc)
         for l in self.neighbours(loc):
-            if l not in seen:
+            if l not in seen and l.y!=loc.y:
+                # l.y!=loc.y to avoid blocking the player moving left or right
                 if self[l] is Blocks.blank:
                     return l
                 else:
@@ -701,7 +701,7 @@ class Board:
 
     def next_move_to(self, src, tgt):
         p = self.find_path(src, tgt)
-        return first(p)
+        return first(p) if p else None
 
     def find_path(self, src, tgt):
         src = getattr(src, 'loc', src)
@@ -729,6 +729,8 @@ class Board:
         l = [tgt]
         n = tgt
         while n!=src:
+            if n not in came_from:
+                return None
             n = came_from[n]
             l.append(n)
         return list(reversed(l))[1:]
@@ -866,8 +868,6 @@ class Board:
         Elder(self.specials[2], '1')
         Kyssa(self.specials[3], '1')
         self.put(Type.pistol223, self.specials[2].mod_r())
-        # self.monsters.append(Ant(self.random_empty(), '1'))
-        self.monsters.append(Ant(self.random_empty(), '1'))
 
     def board_2(self):
         # Arroyo 2
@@ -974,7 +974,7 @@ class Board:
     def is_blocked(self, loc):
         for x in self.get_all(loc):
             if isinstance(x, int):
-                x = Objects.get_by_id(x)
+                x = Objects.get(x)
             if x in BLOCKING or getattr(x, 'type', None) in BLOCKING:
                 return True
         return False
@@ -1243,7 +1243,7 @@ class BeingItemBase:
             for id in (self.live_party() or []):
                 Objects[id].move_to_board(_map, loc=to_B.find_empty_neighbour(loc))
             if self.is_player:
-                to_B.groups.append(Group(to_B, [self]+self.live_party()))
+                to_B.groups.append(Group(to_B, [self.id]+self.live_party()))
         return to_B
 
     @property
@@ -1314,14 +1314,14 @@ class PartyMixin:
     def live_party(self):
         return list(u for u in filter(None, self.party or []) if Objects[u].alive)
 
-    def party_move(self, player, monsters):
+    def party_move(self, player, enemies):
         B = self.B
-        m = self.closest(monsters)
-        if m and (Misc.combat or dist(self, m) <= 6):
-            if m.loc in self.neighbours():
-                self.attack(m)
+        e = self.closest(enemies) if enemies else None
+        if e and (Misc.combat or dist(self, e) <= 6):
+            if e.loc in self.neighbours():
+                self.attack(e)
             else:
-                self.move(loc=self.B.next_move_to(self, m))
+                self.move(loc=self.B.next_move_to(self, e))
 
         elif dist(self, player) > 6:
             if random() > 0.05:
@@ -1341,15 +1341,36 @@ class Group:
     player_group = False
 
     def __init__(self, B, beings, enemies=None):
-        self.B, self.beings, self.enemies = B, set(beings), enemies or []
-        self.player_group = any(b.is_player for b in beings)
+        self.board_map, self.beings, self.enemies = B._map, set(beings), enemies or []
+        def is_player(x):
+            if isinstance(x,ID):
+                return x==ID.player
+            return x.is_player
+        self.player_group = any(is_player(b) for b in beings)
+
+    def __repr__(self):
+        return '<G {}>'.format(str(self.beings))
+
+    def __iter__(self):
+        return iter(self.beings)
+
+    @property
+    def B(self):
+        if self.board_map:
+            return getattr(Boards, 'b_'+self.board_map)
+
+
+    @staticmethod
+    def find_enemies(B, being):
+        bg = first(g for g in B.groups if being in g.beings)
+        if bg: return bg.enemies
 
 class Being(BeingItemBase):
     hp = 1
     max_hp = 1
     is_being = 1
     is_player = False
-    speed = 1
+    speed = 3
     type = None
     char = None
     path = None
@@ -1402,19 +1423,20 @@ class Being(BeingItemBase):
     def name(self):
         return ('dead ' if self.dead else '') + (self._name or self.__class__.__name__)
 
-    def ai_move(self, player):
-        objs = [Objects[id] for id in player.live_party()]
-        tgt = self.closest(objs + [player])
-
-        if tgt and (Misc.combat or (dist(self, tgt) <= 6)):
-            Misc.combat = True
+    def ai_move(self, player, enemies):
+        objs = [Objects.get(x) or x for x in enemies]
+        tgt = self.closest(objs)
+        if tgt:
             self.color = 'lighter blue'
             if tgt.loc in self.neighbours():
                 self.attack(tgt)
             else:
-                self.move(loc=self.B.next_move_to(self, tgt))
+                next_loc = self.B.next_move_to(self, tgt)
+                if next_loc:
+                    self.move(loc=next_loc)
+                else:
+                    self.cur_move=0
             self.B.draw(battle=1)
-            # self.color=None
         else:
             self.cur_move = 0
 
@@ -1476,7 +1498,7 @@ class Being(BeingItemBase):
 
                 self.handle_directional_turn(dir, new)
                 not_player = not self.is_player
-                if not_player or (self.is_player and being not in self.party):
+                if not_player or (self.is_player and being.id not in self.party):
                     self.attack(being, melee=True)
                 if self.cur_move:
                     self.cur_move -= 1
@@ -1573,6 +1595,16 @@ class Being(BeingItemBase):
         elif obj.loc in self.B.neighbours(self.loc):
             self.hit(obj, dmg)
         self.cur_move -= req_ap
+        this_g = other_g = None
+        for g in self.B.groups:
+            if self.id in g:
+                this_g = g
+            if obj.id in g or obj in g:
+                other_g = g
+        if this_g: this_g.enemies = other_g
+        if other_g: other_g.enemies = this_g
+        Misc.combat = True
+
 
     def get_dir(self, b):
         a = self.loc
@@ -1673,10 +1705,8 @@ class Being(BeingItemBase):
 
         elif is_near('metzger') and Objects.metzger.state==1:
             tid, _ = self.talk(Objects.metzger, ID.metzger2, disabled=(5 if self.caps<1000 else None))
-            print("tid", tid)
             if tid==5:
                 self.caps -= 1000
-                print('paying 1k for Vic')
                 Objects.metzger.state = 2
                 Objects.metzger.caps += 1000
                 Objects.vic.state = 1
@@ -1975,7 +2005,8 @@ class Ant(Being):
 
 class Player(PartyMixin, XPLevelMixin, Being):
     speed = 5
-    type = Type.player
+    id = ID.player
+    # type = Type.player
     is_player = True
     level_tiers = enumerate((500,2000,5000,10000,15000,25000,50000,100000,150000))
     char = Blocks.player_l
@@ -2145,7 +2176,7 @@ def board_setup():
     ]
     # Misc.B = Boards.b_1
     Misc.B = Boards.b_3
-    Misc.B = Boards.b_den2
+    Misc.B = Boards.b_den1
 
 def init_items():
     Pistol223()
@@ -2174,15 +2205,14 @@ def main(load_game):
     ok=1
     board_setup()
     # player = Misc.player = Player(Boards.b_1.specials[1], board_map='1', id=ID.player)
-    player = Misc.player = Player(Boards.b_den1.specials[1].mod_l(2), board_map='den2', id=ID.player)
+    player = Misc.player = Player(Boards.b_den1.specials[1].mod_l(2), board_map='den1', id=ID.player)
     Banize(Boards.b_1.specials[1].mod_r(10), board_map='1')
     Chim(Boards.b_1.specials[1].mod_r(5), board_map='1')
     Misc.B.draw(initial=1)
-
-    def live_monsters():
-        return [m for m in Misc.B.monsters if m.alive]
+    Misc.B.groups.append(Group(Misc.B, [player.id]+player.party))
 
     while ok:
+        B = Misc.B
         while 1:
             ok = handle_ui(player)
             if ok=='q': return
@@ -2193,7 +2223,7 @@ def main(load_game):
         for u in player.live_party():
             u = Objects[u]
             while 1:
-                u.party_move(player, live_monsters())
+                u.party_move(player, Group.find_enemies(B, u))
                 if Misc.combat:
                     sleep(0.15)
                 refresh()
@@ -2201,22 +2231,23 @@ def main(load_game):
                     u.cur_move = u.speed
                     break
 
-        for m in live_monsters():
-            while 1:
-                m.ai_move(player)
-                if Misc.combat:
-                    sleep(0.15)
-                refresh()
-                if not Misc.combat or m.cur_move<=0 or m.dead:
-                    m.cur_move = m.speed
-                    break
-
-        if not live_monsters():
-            Misc.combat = False
+        if Misc.combat:
+            for g in B.groups:
+                if g.enemies and not g.player_group:
+                    for b in g.beings:
+                        if b.alive:
+                            while 1:
+                                if not Misc.combat or b.cur_move<=0 or b.dead:
+                                    b.cur_move = b.speed
+                                    break
+                                live_enemies = [e for e in g.enemies if (Objects.get(e) or e).alive]
+                                b.ai_move(player, live_enemies)
+                                sleep(0.15)
 
         if player.dead:
             player.talk(player)
             sys.exit()
+
         if ok=='q': return
         if ok==END_MOVE:
             blt_put_obj(player)
