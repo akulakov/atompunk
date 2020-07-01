@@ -16,6 +16,13 @@ from enum import Enum, auto
 """
 Atom Punk
 * Vic conv, fix radio
+
+rnd enc
+- empty map
+- when moving, rnd chance of encounter
+- based on outdoorsmanship, chance of evading 1-10, 10=90%
+- load map, rand place party in one spot, spread out geckos in another
+- add geckos
 """
 
 HEIGHT = 16
@@ -434,6 +441,8 @@ class Blocks:
     hit2 = '\u2735'
     stimpack = '\u244c'
 
+    gecko = '\u171e'
+
     npc2 = '\u2702'
     npc3 = '\u26fd' # Metzger
     spear = '\u008e'
@@ -482,11 +491,11 @@ def debug(*args):
     debug_log.flush()
 print=debug
 
-def blt_put_obj(obj, loc=None, do_refresh=True):
+def blt_put_obj(obj, loc=None, do_refresh=True, color=None):
     x,y=loc or obj.loc
     x = x*2 +(0 if y%2==0 else 1)
     blt.clear_area(x,y,1,1)
-    puts(x, y, obj)
+    puts(x, y, obj, color)
     if do_refresh:
         refresh()
 
@@ -562,8 +571,12 @@ def status(msg):
 def blt_esc(txt):
     return txt.replace('[','[[').replace(']',']]')
 
-def make_choice(B, txt, choices):
-    status(txt + ' > ')
+def make_choice(B, txt, choices=None, yesno=False):
+    if yesno:
+        status(txt + ' [Y/N] ')
+        choices = 'ynYN'
+    else:
+        status(txt + ' > ')
     B.draw()
     while 1:
         k = get_and_parse_key()
@@ -571,6 +584,8 @@ def make_choice(B, txt, choices):
         if k in ('ENTER', 'ESCAPE'):
             return
         if k in choices:
+            if yesno:
+                return k in 'Yy'
             return k
 
 def prompt():
@@ -856,6 +871,9 @@ class Board:
             return [Loc(a.x, y) for y in range(a.y, b.y+1)]
         elif a.y==b.y:
             return [Loc(x, a.y) for x in range(a.x, b.x+1)]
+
+    def board_encounter(self):
+        self.load_map('encounter')
 
     def board_map(self):
         self.load_map('map')
@@ -1519,8 +1537,34 @@ class Being(BeingItemBase):
                 self.cur_move -= 1
             if self.is_player:
                 self.handle_player_move(new)
+            if self.B._map == 'map':
+                self.random_encounter()
             return True, True
         return None, None
+
+    def random_encounter(self):
+        if random()>0.6:
+            if random() < self.skills[Skills.outdoorsman] * 0.01:
+                ok = make_choice("You've spotted some geckos. Would you like to encounter them?", yesno=True)
+                if ok:
+                    self._random_encounter()
+            self._random_encounter()
+
+    def _random_encounter(self):
+        x,y = randrange(0,WIDTH), randrange(0,HEIGHT)
+        Misc.B = B = self.move_to_board('map', loc=Loc(x,y))
+        B.clear()
+        g = Gecko(B.random_empty())
+        l = g.loc
+        lst = [g]
+        n = randrange(2,7)
+        while len(lst)<n:
+            dir = choice('hlyubn')
+            dist = randrange(2, 5)
+            l2 = l.mod(dir, dist)
+            if chk_oob(l2) and B[l2] is Blocks.blank:
+                lst.append(Gecko(l2))
+        B.groups.append(Group(B, lst))
 
     def handle_directional_turn(self, dir, loc):
         """Turn char based on which way it's facing."""
@@ -2003,6 +2047,12 @@ class Ant(Being):
     hp = 1
     strength = 1
 
+class Gecko(Being):
+    speed = 5
+    char = Blocks.gecko
+    hp = 2
+    strength = 3
+
 class Player(PartyMixin, XPLevelMixin, Being):
     speed = 5
     id = ID.player
@@ -2022,6 +2072,7 @@ class Player(PartyMixin, XPLevelMixin, Being):
         self.inv[Type.spear] = 1
         self.inv[Type.stimpack] = 2
         self.inv[Type.mm10] = 20
+        self.skills[Skills.outdoorsman] = 50
 
     def __str__(self):
         return super().__str__()
@@ -2165,8 +2216,11 @@ def board_setup():
     Boards.b_map = Board(Loc(0,0), 'map')
     Boards.b_map.board_map()
 
+    Boards.b_encounter = Board(Loc(2,0), 'encounter')
+    Boards.b_encounter.board_encounter()
+
     board_grid[:] = [
-        ['map', None, None],
+        ['map', None, 'encounter'],
         [None, None, None],
         ['1', '2', None],
         [None, None, None],
@@ -2214,9 +2268,15 @@ def main(load_game):
     while ok:
         B = Misc.B
         while 1:
+            if Misc.combat:
+                player.color = 'lighter blue'
+            blt_put_obj(player)
+
             ok = handle_ui(player)
             if ok=='q': return
             if not Misc.combat or player.cur_move<=0 or player.dead:
+                player.color = None
+                blt_put_obj(player)
                 player.cur_move = player.speed
                 break
 
@@ -2239,6 +2299,7 @@ def main(load_game):
                             while 1:
                                 if not Misc.combat or b.cur_move<=0 or b.dead:
                                     b.cur_move = b.speed
+                                    b.color = None
                                     break
                                 live_enemies = [e for e in g.enemies if (Objects.get(e) or e).alive]
                                 b.ai_move(player, live_enemies)
