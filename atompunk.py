@@ -573,7 +573,7 @@ def blt_esc(txt):
 
 def make_choice(B, txt, choices=None, yesno=False):
     if yesno:
-        status(txt + ' [Y/N] ')
+        status(blt_esc(txt+' [Y/N] '))
         choices = 'ynYN'
     else:
         status(txt + ' > ')
@@ -1545,26 +1545,29 @@ class Being(BeingItemBase):
     def random_encounter(self):
         if random()>0.6:
             if random() < self.skills[Skills.outdoorsman] * 0.01:
-                ok = make_choice("You've spotted some geckos. Would you like to encounter them?", yesno=True)
+                ok = make_choice(self.B, "You've spotted some geckos. Would you like to encounter them?", yesno=True)
                 if ok:
                     self._random_encounter()
-            self._random_encounter()
+            else:
+                self._random_encounter()
 
     def _random_encounter(self):
         x,y = randrange(0,WIDTH), randrange(0,HEIGHT)
-        Misc.B = B = self.move_to_board('map', loc=Loc(x,y))
-        B.clear()
-        g = Gecko(B.random_empty())
+        Boards.b_encounter.clear()
+        Misc.B = B = self.move_to_board('encounter', loc=Loc(x,y))
+        g = Gecko(B.random_empty(), 'encounter')
         l = g.loc
         lst = [g]
         n = randrange(2,7)
         while len(lst)<n:
-            dir = choice('hlyubn')
-            dist = randrange(2, 5)
-            l2 = l.mod(dir, dist)
+            # dir = choice('hlyubn')
+            # dist = randrange(2, 5)
+            l2 = Loc(l.x + randrange(-5,5), l.y + randrange(-5,5))
+            # l2 = l.mod(dir, dist)
             if chk_oob(l2) and B[l2] is Blocks.blank:
-                lst.append(Gecko(l2))
+                lst.append(Gecko(l2, 'encounter'))
         B.groups.append(Group(B, lst))
+        self.char = Blocks.player_f
 
     def handle_directional_turn(self, dir, loc):
         """Turn char based on which way it's facing."""
@@ -2266,12 +2269,12 @@ def main(load_game):
     Misc.B.groups.append(Group(Misc.B, [player.id]+player.party))
 
     while ok:
-        B = Misc.B
         while 1:
             if Misc.combat:
                 player.color = 'lighter blue'
             blt_put_obj(player)
 
+            print("player.loc", player.loc)
             ok = handle_ui(player)
             if ok=='q': return
             if not Misc.combat or player.cur_move<=0 or player.dead:
@@ -2283,7 +2286,7 @@ def main(load_game):
         for u in player.live_party():
             u = Objects[u]
             while 1:
-                u.party_move(player, Group.find_enemies(B, u))
+                u.party_move(player, Group.find_enemies(Misc.B, u))
                 if Misc.combat:
                     sleep(0.15)
                 refresh()
@@ -2292,7 +2295,7 @@ def main(load_game):
                     break
 
         if Misc.combat:
-            for g in B.groups:
+            for g in Misc.B.groups:
                 if g.enemies and not g.player_group:
                     for b in g.beings:
                         if b.alive:
@@ -2347,6 +2350,7 @@ def handle_ui(unit, battle=False):
             B = Misc.B = handle_load_board(unit, rv)
             B.draw()
         stats()
+        print("in handle_ui(), B", Misc.B)
 
     elif k == '.':
         pass
@@ -2354,12 +2358,15 @@ def handle_ui(unit, battle=False):
         unit.fire()
 
     elif k == 'm':
+        # go to local map
         if B._map=='map':
             maploc_id = loc_to_map_location.get(unit.loc)
             if maploc_id:
                 maploc = Objects[maploc_id]
                 Misc.B = B = unit.move_to_board(maploc.loc_map, loc=Loc(0,0))
                 unit.char = Blocks.player_f
+
+        # go to adventure map
         elif unit.is_player and not battle:
             map_loc = map_name_to_map_location.get(unit.B._map)
             if map_loc:
@@ -2438,7 +2445,7 @@ def handle_ui(unit, battle=False):
                 txt.append(f'{item.name} {n}')
         B.display(txt)
 
-    B.draw(battle = (not unit.is_player))
+    Misc.B.draw(battle = (not unit.is_player))
     return 1
 
 class ShopUI:
