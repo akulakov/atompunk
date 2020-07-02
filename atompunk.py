@@ -1370,7 +1370,14 @@ class Group:
         return '<G {}>'.format(str(self.beings))
 
     def __iter__(self):
-        return iter(self.beings)
+        return iter(Objects.get(b) or b for b in self.beings)
+
+    def live_beings(self):
+        return [b for b in self if b.alive]
+
+    def live_enemies(self):
+        l = [Objects.get(e) or e for e in (self.enemies or [])]
+        return [e for e in l if e.alive]
 
     @property
     def B(self):
@@ -2274,7 +2281,6 @@ def main(load_game):
                 player.color = 'lighter blue'
             blt_put_obj(player)
 
-            print("player.loc", player.loc)
             ok = handle_ui(player)
             if ok=='q': return
             if not Misc.combat or player.cur_move<=0 or player.dead:
@@ -2295,18 +2301,20 @@ def main(load_game):
                     break
 
         if Misc.combat:
-            for g in Misc.B.groups:
-                if g.enemies and not g.player_group:
-                    for b in g.beings:
-                        if b.alive:
-                            while 1:
-                                if not Misc.combat or b.cur_move<=0 or b.dead:
-                                    b.cur_move = b.speed
-                                    b.color = None
-                                    break
-                                live_enemies = [e for e in g.enemies if (Objects.get(e) or e).alive]
-                                b.ai_move(player, live_enemies)
-                                sleep(0.15)
+            groups = [g for g in Misc.B.groups
+                      if g.live_beings() and g.live_enemies() and not g.player_group
+                     ]
+            if not groups:
+                Misc.combat = False
+            for g in groups:
+                for b in g.live_beings():
+                    while 1:
+                        if not Misc.combat or b.cur_move<=0 or b.dead:
+                            b.cur_move = b.speed
+                            b.color = None
+                            break
+                        b.ai_move(player, g.live_enemies())
+                        sleep(0.15)
 
         if player.dead:
             player.talk(player)
