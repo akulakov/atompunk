@@ -1262,6 +1262,7 @@ class BeingItemBase:
                 Objects[id].move_to_board(_map, loc=to_B.find_empty_neighbour(loc))
             if self.is_player:
                 to_B.groups.append(Group(to_B, [self.id]+self.live_party()))
+                print("to_B.groups", to_B.groups)
         return to_B
 
     @property
@@ -1371,6 +1372,10 @@ class Group:
 
     def __iter__(self):
         return iter(Objects.get(b) or b for b in self.beings)
+
+    def __contains__(self, x):
+        id = getattr(x, 'id', object())
+        return x in self.beings or id in self.beings
 
     def live_beings(self):
         return [b for b in self if b.alive]
@@ -1651,12 +1656,14 @@ class Being(BeingItemBase):
         self.cur_move -= req_ap
         this_g = other_g = None
         for g in self.B.groups:
-            if self.id in g:
+            if self in g:
                 this_g = g
-            if obj.id in g or obj in g:
+            if obj in g:
                 other_g = g
-        if this_g: this_g.enemies = other_g
-        if other_g: other_g.enemies = this_g
+        if this_g:
+            this_g.enemies = other_g
+        if other_g:
+            other_g.enemies = this_g
         Misc.combat = True
 
 
