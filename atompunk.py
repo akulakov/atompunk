@@ -764,6 +764,7 @@ class Board:
 
     def clear(self):
         self.B = [mkrow() for _ in range(HEIGHT)]
+        self.groups = []
 
     def found_type_at(self, type, loc):
         if not isinstance(type, SEQ_TYPES):
@@ -781,8 +782,9 @@ class Board:
 
     def remove(self, obj, loc=None):
         loc = loc or obj.loc
-        cell = self.B[loc.y][loc.x]
-        cell.remove(obj if obj in cell else (obj.id or obj.type))
+        if loc:
+            cell = self.B[loc.y][loc.x]
+            cell.remove(obj if obj in cell else (obj.id or obj.type))
 
     def get_all_obj(self, loc):
         objs = [Objects[n] or n for n in self.B[loc.y][loc.x]
@@ -1100,100 +1102,6 @@ class LoadBoard:
         self.new, self.b_new = new, b_new
 
 
-class BattleUI:
-    def __init__(self, B):
-        self.B=B
-
-    def auto_battle(self, a, b):
-        a_str = a.total_strength()
-        b_str = b.total_strength()
-        winner, loser, hp = (a,b,b_str) if a_str>b_str else (b,a,a_str)
-        if winner.is_player:
-            winner.xp += loser.total_strength()//2
-        for u in winner.live_party():
-            u.hp = u.max_hp
-
-    def go(self, a, b):
-        self._go(a,b)
-        Misc.B = self.B
-
-    def _go(self, a, b):
-        a._strength = a.total_strength()
-        b._strength = b.total_strength()
-        B = Misc.B = Boards.b_battle = Board(None, 'battle')
-        B.load_map('battle')
-
-        loc = B.specials[1]
-        for u in a.live_party():
-            B.put(u, loc)
-            loc = loc.mod_d(2)
-        loc = B.specials[2]
-        for u in b.live_party():
-            B.put(u, loc)
-            loc = loc.mod_d(2)
-
-        B.random_rocks(20)
-        B.draw(battle=1)
-        while 1:
-            B.draw(battle=1)
-            for u in a.live_party():
-                rv = self.handle_unit_turn(B, a, b, u)
-                if rv==AUTO_BATTLE:
-                    break
-            if self.check_for_win(a,b):
-                break
-            for u in b.live_party():
-                rv = self.handle_unit_turn(B, b, a, u)
-                if rv==AUTO_BATTLE:
-                    break
-            if self.check_for_win(a,b):
-                break
-
-    def handle_unit_turn(self, B, a, b, unit):
-        h,u = a, unit
-        Misc.current_unit = u   # for stats()
-        while 1:
-            if not u.alive:
-                break
-            if not h.is_ai():
-                u.color = 'lighter blue'
-                blt_put_obj(u)
-                ok = handle_ui(u)
-                u.color = None
-                if not ok:
-                    return
-                if ok==END_MOVE:
-                    u.cur_move = u.speed
-                    u.color=None
-                    blt_put_obj(u)
-                    break
-                if ok==AUTO_BATTLE:
-                    self.auto_battle(a, b)
-                    return AUTO_BATTLE
-            else:
-                tgt = u.closest(b.live_party())
-
-                if tgt:
-                    u.color = 'lighter blue'
-                    blt_put_obj(u)
-                    sleep(0.25)
-                    # path = u.path.get(tgt) or B.find_path(u.loc, tgt.loc)
-                    path = B.find_path(u.loc, tgt.loc)
-                    if len(path)==0:
-                        u.hit(tgt)
-                    elif path:
-                        u.move(loc=first(path))
-                        u.path[tgt] = path
-                    else:
-                        return
-
-                    B.draw(battle=1)
-                    if u.cur_move==0:
-                        u.cur_move = u.speed
-                        u.color=None
-                        blt_put_obj(u)
-                        break
-
 class BeingItemBase:
     is_player = 0
     player = None
@@ -1262,7 +1170,6 @@ class BeingItemBase:
                 Objects[id].move_to_board(_map, loc=to_B.find_empty_neighbour(loc))
             if self.is_player:
                 to_B.groups.append(Group(to_B, [self.id]+self.live_party()))
-                print("to_B.groups", to_B.groups)
         return to_B
 
     @property
@@ -1564,18 +1471,19 @@ class Being(BeingItemBase):
                 self._random_encounter()
 
     def _random_encounter(self):
+        self.travel_loc = self.loc
         x,y = randrange(0,WIDTH), randrange(0,HEIGHT)
         Boards.b_encounter.clear()
+        for id in self.live_party():
+            Objects[id].loc = None
+
         Misc.B = B = self.move_to_board('encounter', loc=Loc(x,y))
         g = Gecko(B.random_empty(), 'encounter')
         l = g.loc
         lst = [g]
         n = randrange(2,7)
         while len(lst)<n:
-            # dir = choice('hlyubn')
-            # dist = randrange(2, 5)
             l2 = Loc(l.x + randrange(-5,5), l.y + randrange(-5,5))
-            # l2 = l.mod(dir, dist)
             if chk_oob(l2) and B[l2] is Blocks.blank:
                 lst.append(Gecko(l2, 'encounter'))
         B.groups.append(Group(B, lst))
@@ -2079,6 +1987,7 @@ class Player(PartyMixin, XPLevelMixin, Being):
     char = Blocks.player_l
     hp = 40
     caps = 1200
+    travel_loc = None
 
     def __init__(self, *args, player=None, party=None, spells=None, **kwargs ):
         super().__init__(*args, **kwargs)
@@ -2365,7 +2274,6 @@ def handle_ui(unit, battle=False):
             B = Misc.B = handle_load_board(unit, rv)
             B.draw()
         stats()
-        print("in handle_ui(), B", Misc.B)
 
     elif k == '.':
         pass
@@ -2373,6 +2281,8 @@ def handle_ui(unit, battle=False):
         unit.fire()
 
     elif k == 'm':
+        in_encounter = B._map == 'encounter'
+
         # go to local map
         if B._map=='map':
             maploc_id = loc_to_map_location.get(unit.loc)
@@ -2387,6 +2297,11 @@ def handle_ui(unit, battle=False):
             if map_loc:
                 loc = Objects[map_loc].loc
                 Misc.B = B = unit.move_to_board('map', loc=loc)
+                unit.char = Blocks.party
+            elif in_encounter and Misc.combat:
+                status('Can not exit location while in combat')
+            elif in_encounter:
+                Misc.B = B = unit.move_to_board('map', loc=unit.travel_loc)
                 unit.char = Blocks.party
             else:
                 status('Can not exit town from this location, try the starting location')
