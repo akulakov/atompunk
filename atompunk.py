@@ -1263,8 +1263,12 @@ def handle_load_board(unit, rv):
 class Armor:
     pass
 
+def obj_or_id(x):
+    return Objects.get(x) or x
+
 class Group:
     player_group = False
+    monster_group = False
 
     def __init__(self, B, beings, enemies=None):
         self.board_map, self.beings, self.enemies = B._map, set(beings), enemies or []
@@ -1273,6 +1277,7 @@ class Group:
                 return x==ID.player
             return x.is_player
         self.player_group = any(is_player(b) for b in beings)
+        self.monster_group = obj_or_id(beings[0]).monster
 
     def __repr__(self):
         return '<G {}>'.format(str(self.beings))
@@ -1316,6 +1321,7 @@ class Being(BeingItemBase):
     equipped = None
     armor = None
     base_hit_ap = 2
+    monster = False
 
     strength = 5
     perception = 5
@@ -1966,13 +1972,16 @@ class XPLevelMixin:
     level = 1
     level_tiers = enumerate(())
 
-class Ant(Being):
+class Monster(Being):
+    monster = True
+
+class Ant(Monster):
     speed = 6
     char = Blocks.ant
     hp = 1
     strength = 1
 
-class Gecko(Being):
+class Gecko(Monster):
     speed = 5
     char = Blocks.gecko
     hp = 2
@@ -2216,6 +2225,23 @@ def main(load_game):
                     u.cur_move = u.speed
                     break
 
+        m_groups = [g for g in Misc.B.groups if g.live_beings() and g.monster_group]
+        nm_groups = [g for g in Misc.B.groups if g not in m_groups]
+
+        for mg in m_groups:
+            if not mg.enemies:
+                for m in mg.live_beings():
+                    for g in nm_groups:
+                        if not g.enemies:
+                            cl = m.closest(g.live_beings())
+                            if dist(m, cl) <= 5:
+                                mg.enemies = g
+                                g.enemies = mg
+                                Misc.combat = True
+                                break
+                    if mg.enemies:
+                        break
+
         if Misc.combat:
             groups = [g for g in Misc.B.groups
                       if g.live_beings() and g.live_enemies() and not g.player_group
@@ -2242,6 +2268,9 @@ def main(load_game):
             player.cur_move = player.speed
             ok=1
 
+def flatten(it):
+    import itertools
+    return list(itertools.chain.from_iterable(it))
 
 def handle_ui(unit, battle=False):
     if not unit.cur_move:
