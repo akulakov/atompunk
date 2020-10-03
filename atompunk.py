@@ -216,20 +216,20 @@ conv_str = {
     ID.lignac: {1: "What is this place?",
                 2: "Slaver's guild.",
                 3: "What do you do?",
-                4: "What the fuck do you think, we buy and sell slaves.",
+                4: "the fuck do you think, we buy and sell slaves.",
                 5: "Where do you get slaves?",
-                6: "Ah, you know.. here and there.. and everywhere. I guess.",
+                6: "Ah, you know.. here and there.. and everywhere, I guess.",
                 7: "Who runs this place?",
                 8: "Metzger. He's in the building to the west. If you need to talk to him, make sure it's something important, he's got a lot on his plate and he's really pissed at that Vic guy. Oh yeah, and he's got a short temper.",
                 9: "Why is he pissed at Vic?",
                 10: "That's above my pay grade. You can ask him, if you dare.",
                },
 
-    ID.metzger: {1: "The fuck.. this is not a tribal drumming circle you know. What the fuck are you doing here?, - and make it quick.",
+    ID.metzger: {1: "The hell.. this is not a tribal drumming circle you know. What the flying merde are you doing here?, - and make it quick.",
                 2: "Do you know someone named Vic?",
                 3: "Yes, he pissed me off big time with his radio.. tried to run away, too",
                 4: "What radio?",
-                5: "What the fuck do you know about radios, tribal? Get out of my sight.",
+                5: "What do you know about radios, tribal? Get out of my sight.",
                 6: "Can I see Vic?",
                 7: "Yeah, knock yourself out, talk to this useless shit. I should probably just strangle him, that would suit him right. If you do that I won't even mind.",
                 8: "That was a joke, touch any of my property and I sell you for dog meat. Or worse.",
@@ -242,7 +242,7 @@ conv_str = {
     ID.metzger2: {
         1: "Well, that asshole did finally fix the radio, something he should have done a damn long time ago.",
         2: "Will you let him go?",
-        3: "Yeah, I'm sick of seeing his sorry ass mug. Never hear a grown man whine so much, what the fuck is it with these traders? They whine and whine, and then whine again, just on the account slave's life is not as cushy.",
+        3: "Yeah, I'm sick of seeing his sorry ass mug. Never hear a grown man whine so much, what the shit is it with these traders? They whine and whine, and then whine again, just on the account slave's life is not as cushy.",
         4: "..and then I thought, well where is the business sense in all that? Sure I can let him go if he ponies up a very reasonable 1k caps, why I bet he moves that much in a week. You know, that old tech can get pricey, I can tell you that. I sure wish it warn't, but yes it does cost you.",
         5: "Here's 1k caps",
         6: "I'm sure he can scrounge that much. It's his freedom after all, that should be some incentive right there!",
@@ -696,12 +696,15 @@ class Board:
         refresh()
         blt.read()
 
-    def get_ids_types(self, loc, attr='id'):
+    def get_ids_types(self, loc, attr='id', alive=False):
+        """
+        alive: only get IDs / types for live beings
+        """
         if isinstance(loc, Loc):
             loc = [loc]
         lst = []
         for l in loc:
-            lst.extend(self.get_all(l))
+            lst.extend(self.get_all_obj(l, alive=alive))
         lst = [getattr(x, attr, None) or x for x in lst]
         return lst
 
@@ -786,11 +789,17 @@ class Board:
             cell = self.B[loc.y][loc.x]
             cell.remove(obj if obj in cell else (obj.id or obj.type))
 
-    def get_all_obj(self, loc):
+    def get_all_obj(self, loc, alive=False):
+        """
+        alive: only get live beings
+        """
         objs = [Objects[n] or n for n in self.B[loc.y][loc.x]
                 if not isinstance(n, str)
                ]
-        return [o for o in objs if not isinstance(o,Player)]
+        objs = [o for o in objs if not isinstance(o,Player)]
+        if alive:
+            objs = [o for o in objs if isinstance(o,Being) and o.alive]
+        return objs
 
     def get_obj(self, loc):
         return last(self.get_all_obj(loc))
@@ -1630,11 +1639,11 @@ class Being(BeingItemBase):
             status(f'{cont.name} is empty')
 
     def action(self):
-        def is_near(id):
-            return getattr(ID, id) in self.B.get_ids_types(self.B.neighbours(self.loc) + [self.loc], 'id')
+        def is_near(id, alive=True):
+            return getattr(ID, id) in self.B.get_ids_types(self.B.neighbours(self.loc) + [self.loc], 'id', alive=alive)
 
-        def is_near_type(type):
-            return getattr(Type, type) in self.B.get_ids_types(self.B.neighbours(self.loc) + [self.loc], 'type')
+        def is_near_type(type, alive=True):
+            return getattr(Type, type) in self.B.get_ids_types(self.B.neighbours(self.loc) + [self.loc], 'type', alive=alive)
 
         top_obj = self.B.get_obj(self.loc)
 
@@ -2073,6 +2082,7 @@ class Vic(NPC):
     char = Blocks.npc2
 
 class StJunien(NPC):
+    markup = 0
     id = ID.st_junien
     char = Blocks.npc2
     caps = 58
