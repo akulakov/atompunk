@@ -346,8 +346,12 @@ class Talk:
     def talk(self):
         try:
             self.last_conv = conv = self.current[self.ind]
+            print("conv", conv)
         except Exception as e:
-            return
+            print("self.current", self.current)
+            print("self.ind", self.ind)
+            print('talk 1')
+            return self.current[-1]
 
         if self.disabled and isinstance(conv, SEQ_TYPES):
             conv = [c for c in conv if c[0] not in self.disabled]
@@ -360,6 +364,7 @@ class Talk:
             self.choice_stack.append(conv)
             i = self.choose(conv)
             if i is None:
+                print('talk 2')
                 return
             self.current = ch = conv[i-1]
             if isinstance(ch, int):
@@ -367,7 +372,9 @@ class Talk:
             self.ind = 1
         else:
             rv = self.display(self.conv_str[conv])
-            if not rv: return
+            if not rv:
+                print('talk 3')
+                return
             self.ind += 1
         rv = self.talk()
         return rv
@@ -921,7 +928,7 @@ class Board:
         Vic(self.specials[2], 'den2')
         Leblanc(self.specials[3], 'den2')
         Lignac(self.specials[4], 'den2')
-        self.doors[1].type = Type.blocking
+        # self.doors[1].type = Type.blocking
 
     def screen_loc_to_map(self, loc):
         x,y=loc
@@ -1477,7 +1484,7 @@ class Being(BeingItemBase):
         return None, None
 
     def random_encounter(self):
-        if random()>0.6:
+        if random()>0.9:
             if random() < self.skills[Skills.outdoorsman] * 0.01:
                 ok = make_choice(self.B, "You've spotted some geckos. Would you like to encounter them?", yesno=True)
                 if ok:
@@ -1672,11 +1679,11 @@ class Being(BeingItemBase):
             if not self.inv.get(ID.broken_radio):
                 disabled = [7]
             tid, _ = self.talk(Objects.vic, disabled=disabled)
-            if tid>=9:
+            if tid and tid>=9:
                 self.inv[ID.broken_radio] -= 1
                 Objects.metzger.state = 1
 
-        elif is_near('vic') and Objects.vic.state==1:
+        elif is_near('vic') and Objects.vic.state==0:
             self.talk(Objects.vic, ID.vic2)
             self.party.append(ID.vic)
 
@@ -2175,7 +2182,7 @@ def board_setup():
     ]
     # Misc.B = Boards.b_1
     Misc.B = Boards.b_3
-    Misc.B = Boards.b_den1
+    Misc.B = Boards.b_den2
 
 def init_items():
     Pistol223()
@@ -2204,7 +2211,7 @@ def main(load_game):
     ok=1
     board_setup()
     # player = Misc.player = Player(Boards.b_1.specials[1], board_map='1', id=ID.player)
-    player = Misc.player = Player(Boards.b_den1.specials[1].mod_l(2), board_map='den1', id=ID.player)
+    player = Misc.player = Player(Boards.b_den2.specials[1].mod_l(2), board_map='den2', id=ID.player)
     Banize(Boards.b_1.specials[1].mod_r(10), board_map='1')
     Chim(Boards.b_1.specials[1].mod_r(5), board_map='1')
     Misc.B.draw(initial=1)
