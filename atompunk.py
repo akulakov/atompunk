@@ -965,8 +965,11 @@ class Board:
                 x,y = loc_to_scr(x, y)
                 if isinstance(a, (ID, Type)):
                     a = Objects[a]
-                if self._map!='map' or not getattr(a, 'hidden', False):
+                if getattr(a, 'hidden', False):
+                    puts(x,y,Blocks.blank)
+                else:
                     puts(x,y,a)
+
 
         if not editor:
             for bld, fill, door in self.buildings:
@@ -1240,6 +1243,9 @@ class MapLocation(BeingItemBase):
         self.hidden = hidden
         map_name_to_map_location[loc_map] = self.id
         loc_to_map_location[self.loc] = self.id
+
+    def __repr__(self):
+        return 'MapLocation %s'% self.loc_map
 
 
 class BlockingItem(Item):
@@ -1683,7 +1689,7 @@ class Being(BeingItemBase):
                 self.inv[ID.broken_radio] -= 1
                 Objects.metzger.state = 1
 
-        elif is_near('vic') and Objects.vic.state==0:
+        elif is_near('vic') and Objects.vic.state==1:
             self.talk(Objects.vic, ID.vic2)
             self.party.append(ID.vic)
 
@@ -2182,7 +2188,7 @@ def board_setup():
     ]
     # Misc.B = Boards.b_1
     Misc.B = Boards.b_3
-    Misc.B = Boards.b_den2
+    Misc.B = Boards.b_den1
 
 def init_items():
     Pistol223()
@@ -2211,7 +2217,7 @@ def main(load_game):
     ok=1
     board_setup()
     # player = Misc.player = Player(Boards.b_1.specials[1], board_map='1', id=ID.player)
-    player = Misc.player = Player(Boards.b_den2.specials[1].mod_l(2), board_map='den2', id=ID.player)
+    player = Misc.player = Player(Boards.b_den2.specials[1].mod_l(2), board_map='den1', id=ID.player)
     Banize(Boards.b_1.specials[1].mod_r(10), board_map='1')
     Chim(Boards.b_1.specials[1].mod_r(5), board_map='1')
     Misc.B.draw(initial=1)
