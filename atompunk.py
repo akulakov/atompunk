@@ -895,9 +895,9 @@ class Board:
 
     def board_map(self):
         self.load_map('map')
-        MapLocation('Arroyo', self.specials[1], 'map', loc_map='1', id=ID.arroyo_map_loc, hidden=False)
-        MapLocation('Klamath', self.specials[2], 'map', loc_map='3', id=ID.klamath_map_loc, hidden=False)
-        MapLocation('Den', self.specials[3], 'map', loc_map='den1', id=ID.den_map_loc)
+        MapLocation('Arroyo', self.specials[1], 'map', loc_maps='1', id=ID.arroyo_map_loc, hidden=False)
+        MapLocation('Klamath', self.specials[2], 'map', loc_maps='3', id=ID.klamath_map_loc, hidden=False)
+        MapLocation('Den', self.specials[3], 'map', loc_maps=('den1','den2'), id=ID.den_map_loc)
 
     def board_1(self):
         self.load_map('1')
@@ -1246,15 +1246,18 @@ class MapLocation(BeingItemBase):
     char = Blocks.location
     hidden = True
 
-    def __init__(self, *args, hidden=True, loc_map=None, **kwargs):
+    def __init__(self, *args, hidden=True, loc_maps=(), **kwargs):
         super().__init__(None, *args, **kwargs)
-        self.loc_map = loc_map
+        self.loc_maps = loc_maps
         self.hidden = hidden
-        map_name_to_map_location[loc_map] = self.id
+        if not isinstance(loc_maps, SEQ_TYPES):
+            loc_maps = [loc_maps]
+        for loc_map in loc_maps:
+            map_name_to_map_location[loc_map] = self.id
         loc_to_map_location[self.loc] = self.id
 
     def __repr__(self):
-        return 'MapLocation %s'% self.loc_map
+        return 'MapLocation %s'% self.loc_maps
 
 
 class BlockingItem(Item):
@@ -2447,7 +2450,7 @@ def handle_ui(unit, battle=False):
             maploc_id = loc_to_map_location.get(unit.loc)
             if maploc_id:
                 maploc = Objects[maploc_id]
-                Misc.B = B = unit.move_to_board(maploc.loc_map, loc=Loc(0,0))
+                Misc.B = B = unit.move_to_board(maploc.loc_maps[0], loc=Loc(0,0))
                 unit.char = Blocks.player_f
 
         # go to adventure map
