@@ -2122,6 +2122,104 @@ class Chim(NPC):
 class IndependentParty(Player):
     pass
 
+
+class ShopUI:
+
+    def __init__(self, B, player, trader):
+        self.B = B
+        self.trader = trader
+        self.player = player
+
+    def shop_ui(self):
+        ch = make_choice(self.B, 'B)uy S)ell', 'bs')
+        if ch == 'b':
+            self._shop_ui(False)
+        elif ch == 's':
+            self._shop_ui()
+
+
+    def _shop_ui(self, sell=True):
+        i = 0
+        self.B.draw()
+        transaction = defaultdict(int)
+        seller_caps = 0
+        buyer_caps = self.trader.caps if sell else self.player.caps
+        markup = -self.trader.markup if sell else self.trader.markup
+        inv = self.player.inv if sell else self.trader.inv
+        tgt_inv = self.trader.inv if sell else self.player.inv
+        if not any(inv.values()):
+            status('Nothing to '+('sell' if sell else 'buy'))
+            return
+
+        while 1:
+            stats(self)
+            blt.clear_area(5,5,60,10)
+
+            puts(5, 8 + i, Blocks.circle3)
+
+            x = y = 8
+            items = [(type, q, Objects[type]) for type,q in inv.items()]
+            ln = len(items)
+            for n, (_,qty,obj) in enumerate(items):
+                puts(7, y+n, f'{obj.name:30} {qty:-2} {obj.cost(markup):-2}caps')
+            puts(7, y+n+1, 'SELL' if sell else 'BUY')
+
+            refresh()
+            k = get_and_parse_key()
+            if k in ('q', 'ESCAPE'):
+                # rollback transaction
+                for id, qty in transaction.items():
+                    inv[id] += qty
+                return
+            elif k == 'ENTER':
+                if sell:
+                    self.trader.caps = buyer_caps
+                    self.player.caps += seller_caps
+                else:
+                    self.player.caps = buyer_caps
+                    self.trader.caps += seller_caps
+                for id, qty in transaction.items():
+                    tgt_inv[id] += qty
+                return
+            elif k == 'UP':
+                i-=1
+                if i<0: i = ln
+            elif k == 'DOWN':
+                i+=1
+                if i>ln: i = 0
+
+            # BUYBACK
+            elif k == 'LEFT' and i<ln:
+                id, qty, obj = items[i]
+                if transaction[id]<=0:
+                    continue
+                if blt.state(blt.TK_SHIFT):
+                    n = transaction[id]
+                else:
+                    n = 1
+                inv[id] += n
+                transaction[id] -= n
+                total = n * obj.cost(markup)
+                buyer_caps += total
+                seller_caps -= total
+
+            # SELL
+            elif k == 'RIGHT' and i<ln and items[i][1]>0:
+                id, qty, obj = items[i]
+                if obj.cost() > buyer_caps:
+                    continue
+
+                if blt.state(blt.TK_SHIFT):
+                    n = int(math.floor(buyer_caps / obj.cost(markup)))
+                else:
+                    n = 1
+                inv[id] -= n
+                transaction[id] += n
+                total = n * obj.cost()
+                buyer_caps -= total
+                seller_caps += total
+
+
 class Saves:
     saves = {}
     loaded = 0
@@ -2429,102 +2527,6 @@ def handle_ui(unit, battle=False):
 
     Misc.B.draw(battle = (not unit.is_player))
     return 1
-
-class ShopUI:
-    def __init__(self, B, player, trader):
-        self.B = B
-        self.trader = trader
-        self.player = player
-
-    def shop_ui(self):
-        ch = make_choice(self.B, 'B)uy S)ell', 'bs')
-        if ch == 'b':
-            self._shop_ui(False)
-        elif ch == 's':
-            self._shop_ui()
-
-
-    def _shop_ui(self, sell=True):
-        i = 0
-        self.B.draw()
-        transaction = defaultdict(int)
-        seller_caps = 0
-        buyer_caps = self.trader.caps if sell else self.player.caps
-        markup = -self.trader.markup if sell else self.trader.markup
-        inv = self.player.inv if sell else self.trader.inv
-        tgt_inv = self.trader.inv if sell else self.player.inv
-        if not any(inv.values()):
-            status('Nothing to '+('sell' if sell else 'buy'))
-            return
-
-        while 1:
-            stats(self)
-            blt.clear_area(5,5,60,10)
-
-            puts(5, 8 + i, Blocks.circle3)
-
-            x = y = 8
-            items = [(type, q, Objects[type]) for type,q in inv.items()]
-            ln = len(items)
-            for n, (_,qty,obj) in enumerate(items):
-                puts(7, y+n, f'{obj.name:30} {qty:-2} {obj.cost(markup):-2}caps')
-            puts(7, y+n+1, 'SELL' if sell else 'BUY')
-
-            refresh()
-            k = get_and_parse_key()
-            if k in ('q', 'ESCAPE'):
-                # rollback transaction
-                for id, qty in transaction.items():
-                    inv[id] += qty
-                return
-            elif k == 'ENTER':
-                if sell:
-                    self.trader.caps = buyer_caps
-                    self.player.caps += seller_caps
-                else:
-                    self.player.caps = buyer_caps
-                    self.trader.caps += seller_caps
-                for id, qty in transaction.items():
-                    tgt_inv[id] += qty
-                return
-            elif k == 'UP':
-                i-=1
-                if i<0: i = ln
-            elif k == 'DOWN':
-                i+=1
-                if i>ln: i = 0
-
-            # BUYBACK
-            elif k == 'LEFT' and i<ln:
-                id, qty, obj = items[i]
-                if transaction[id]<=0:
-                    continue
-                if blt.state(blt.TK_SHIFT):
-                    n = transaction[id]
-                else:
-                    n = 1
-                inv[id] += n
-                transaction[id] -= n
-                total = n * obj.cost(markup)
-                buyer_caps += total
-                seller_caps -= total
-
-            # SELL
-            elif k == 'RIGHT' and i<ln and items[i][1]>0:
-                id, qty, obj = items[i]
-                if obj.cost() > buyer_caps:
-                    continue
-
-                if blt.state(blt.TK_SHIFT):
-                    n = int(math.floor(buyer_caps / obj.cost(markup)))
-                else:
-                    n = 1
-                inv[id] -= n
-                transaction[id] += n
-                total = n * obj.cost()
-                buyer_caps -= total
-                seller_caps += total
-
 
 def editor(_map):
     blt.open()
