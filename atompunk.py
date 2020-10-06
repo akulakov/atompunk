@@ -946,12 +946,21 @@ class Board:
                 # check in `bld` here because door is part of `bld` and we want to reveal when standing in the doorway
                 fill_loc = set(o.loc for o in fill)
                 bld_loc = set(o.loc for o in bld)
-                if Misc.player and Misc.player.loc not in fill_loc|bld_loc:
+                # print("bld", bld)
+                debug("Misc.player.loc", Misc.player.loc)
+                debug("fill_loc", fill_loc)
+                debug("bld_loc", bld_loc)
+                door_loc = set([door])
+                if Misc.player and Misc.player.loc not in fill_loc|bld_loc|door_loc:
+                    debug('player not in building, filling...')
                     for obj in fill:
                         blt_put_obj(obj, do_refresh=0)
                         all_fill.add(tuple(obj.loc))
                         if initial:
                             refresh()
+                else:
+                    debug('player IN building')
+                debug('')
 
         for y, row in enumerate(self.B):
             for x, cell in enumerate(row):
