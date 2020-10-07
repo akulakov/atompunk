@@ -137,6 +137,7 @@ class ID(Enum):
     arroyo_map_loc = auto()
     klamath_map_loc = auto()
     den_map_loc = auto()
+    tcaves_map_loc = auto()
 
 
 class Type(Enum):
@@ -447,6 +448,8 @@ class Blocks:
     hit1 = '~'
     hit2 = '\u2735'
     stimpack = '\u244c'
+
+    entrance = '\u0239'
 
     gecko = '\u171e'
 
@@ -898,6 +901,7 @@ class Board:
         MapLocation('Arroyo', self.specials[1], 'map', loc_maps='1', id=ID.arroyo_map_loc, hidden=False)
         MapLocation('Klamath', self.specials[2], 'map', loc_maps='3', id=ID.klamath_map_loc, hidden=False)
         MapLocation('Den', self.specials[3], 'map', loc_maps=('den1','den2'), id=ID.den_map_loc)
+        MapLocation('Toxic Caves', self.specials[4], 'map', loc_maps=('tcaves1',), id=ID.tcaves_map_loc)
 
     def board_1(self):
         self.load_map('1')
@@ -929,6 +933,10 @@ class Board:
         Leblanc(self.specials[3], 'den2')
         Lignac(self.specials[4], 'den2')
         # self.doors[1].type = Type.blocking
+
+    def board_tcaves1(self):
+        self.load_map('tcaves1')
+        e = Portal(self.specials[1], board_map='tcaves1')
 
     def screen_loc_to_map(self, loc):
         x,y=loc
@@ -1238,6 +1246,12 @@ class Item(BeingItemBase):
             self.B.remove(self)
             self.loc = new
             self.B.put(self)
+
+
+class Portal(BeingItemBase):
+    def __init__(self, *args, **kwargs):
+        kwargs.update(char=Blocks.entrance, loc=args[0])
+        super().__init__(*args[1:], **kwargs)
 
 map_name_to_map_location = {}
 loc_to_map_location = {}
@@ -1562,7 +1576,8 @@ class Being(BeingItemBase):
         names = [o.name for o in B.get_all_obj(new) if o.name and o!=self]
         plural = len(names)>1
         names = ', '.join(names)
-        if names:
+
+        if names and B._map!='map':
             a = ':' if plural else ' a'
             status(f'You see{a} {names}')
 
@@ -2281,6 +2296,9 @@ def board_setup():
     Boards.b_den2 = Board(Loc(1,6), 'den2')
     Boards.b_den2.board_den2()
 
+    Boards.b_tcaves1 = Board(Loc(0,8), 'tcaves1')
+    Boards.b_tcaves1.board_tcaves1()
+
     Boards.b_map = Board(Loc(0,0), 'map')
     Boards.b_map.board_map()
 
@@ -2295,10 +2313,13 @@ def board_setup():
         ['3', None, None],
         [None, None, None],
         ['den1', 'den2', None],
+        [None, None, None],
+        ['tcaves1', 'tcaves2', None],
+        [None, None, None],
     ]
     # Misc.B = Boards.b_1
-    Misc.B = Boards.b_3
-    Misc.B = Boards.b_den1
+    # Misc.B = Boards.b_3
+    Misc.B = Boards.b_tcaves1
 
 def init_items():
     Pistol223()
@@ -2327,7 +2348,7 @@ def main(load_game):
     ok=1
     board_setup()
     # player = Misc.player = Player(Boards.b_1.specials[1], board_map='1', id=ID.player)
-    player = Misc.player = Player(Boards.b_den2.specials[1].mod_l(2), board_map='den1', id=ID.player)
+    player = Misc.player = Player(Boards.b_den2.specials[1].mod_l(2), board_map='tcaves1', id=ID.player)
     Banize(Boards.b_1.specials[1].mod_r(10), board_map='1')
     Chim(Boards.b_1.specials[1].mod_r(5), board_map='1')
     Misc.B.draw(initial=1)
@@ -2450,8 +2471,9 @@ def handle_ui(unit, battle=False):
             maploc_id = loc_to_map_location.get(unit.loc)
             if maploc_id:
                 maploc = Objects[maploc_id]
-                Misc.B = B = unit.move_to_board(maploc.loc_maps[0], loc=Loc(0,0))
-                unit.char = Blocks.player_f
+                if not maploc.hidden:
+                    Misc.B = B = unit.move_to_board(maploc.loc_maps[0], loc=Loc(0,0))
+                    unit.char = Blocks.player_f
 
         # go to adventure map
         elif unit.is_player and not battle:
