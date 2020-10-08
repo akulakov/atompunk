@@ -901,7 +901,7 @@ class Board:
         MapLocation('Arroyo', self.specials[1], 'map', loc_maps='1', id=ID.arroyo_map_loc, hidden=False)
         MapLocation('Klamath', self.specials[2], 'map', loc_maps='3', id=ID.klamath_map_loc, hidden=False)
         MapLocation('Den', self.specials[3], 'map', loc_maps=('den1','den2'), id=ID.den_map_loc)
-        MapLocation('Toxic Caves', self.specials[4], 'map', loc_maps=('tcaves1',), id=ID.tcaves_map_loc)
+        MapLocation('Toxic Caves', self.specials[4], 'map', loc_maps=('tcaves1',), id=ID.tcaves_map_loc, hidden=0)
 
     def board_1(self):
         self.load_map('1')
@@ -937,6 +937,15 @@ class Board:
     def board_tcaves1(self):
         self.load_map('tcaves1')
         e = Portal(self.specials[1], board_map='tcaves1')
+        g = Gecko(self.random_empty(), 'tcaves1')
+        l = g.loc
+        lst = [g]
+        n = randrange(4,7)
+        while len(lst)<n:
+            l2 = Loc(l.x + randrange(-5,5), l.y + randrange(-5,5))
+            if chk_oob(l2) and self[l2] is Blocks.blank:
+                lst.append(Gecko(l2, 'tcaves1'))
+        self.groups.append(Group(self, lst))
 
     def screen_loc_to_map(self, loc):
         x,y=loc
@@ -1349,11 +1358,6 @@ class Group:
         if self.board_map:
             return getattr(Boards, 'b_'+self.board_map)
 
-
-    @staticmethod
-    def find_enemies(B, being):
-        bg = first(g for g in B.groups if being in g.beings)
-        if bg: return bg.enemies
 
 class Being(BeingItemBase):
     hp = 1
@@ -2368,10 +2372,12 @@ def main(load_game):
                 player.cur_move = player.speed
                 break
 
+
+        pg = first([g for g in Misc.B.groups if g.player_group])
         for u in player.live_party():
             u = Objects[u]
             while 1:
-                u.party_move(player, Group.find_enemies(Misc.B, u))
+                u.party_move(player, pg.enemies if pg else None)
                 if Misc.combat:
                     sleep(0.15)
                 refresh()
