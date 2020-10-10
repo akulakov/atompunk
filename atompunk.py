@@ -131,6 +131,9 @@ class ID(Enum):
     leblanc = auto()
     vic = auto()
     vic2 = auto()
+    sakara = auto()
+    sakara2 = auto()
+    banoja = auto()
 
     broken_radio = auto()
 
@@ -272,11 +275,32 @@ conv_str = {
         2: "I'll help you with your search, like I promised. I don't know where the vault is exactly, but I'll help you track down a few old things in the neighbouring towns that will set you on the right way. Let's go!",
     },
 
+    ID.sakara: {
+        1: 'Have you heard that fool got himself stranded among some slithering lizards?',
+        2: 'Who? Where?',
+        3: "At the toxic caves.. I'm too upset to talk about it right now. I think I need to lie down..",
+    },
+
+    ID.sakara2: {
+        1: "Banoja seems to be just fine. He's not afraid of the geckos and he said they will cause him no harm.",
+        2: "That's strange news indeed; I wonder what's gotten into him. But I'm relieved, thank you as much for carrying these news to me as for trying to rescue him in the first place.",
+    },
+
+    ID.banoja: {
+        1: 'Looks like you need some help getting out of here friend!',
+        2: 'What? Who?',
+        3: 'With the geckos around.. you know..',
+        4: "Ahh, I see. You've come here to help me. I appreciate it, but the geckos won't harm me.",
+    }
+
 }
 
 conversations = {
     Type.guard: [1],
     ID.player: [1],
+    ID.sakara: [1,2,3],
+    ID.sakara2: [1,2],
+    ID.banoja: [1,2,3,4],
     ID.lignac: list(range(1,11)),
     ID.metzger: list(range(1,11)),
     ID.metzger2: list(range(1,5)) + [[5,6]],
@@ -900,7 +924,7 @@ class Board:
         self.load_map('map')
         MapLocation('Arroyo', self.specials[1], 'map', loc_maps='1', id=ID.arroyo_map_loc, hidden=False)
         MapLocation('Klamath', self.specials[2], 'map', loc_maps='3', id=ID.klamath_map_loc, hidden=False)
-        MapLocation('Den', self.specials[3], 'map', loc_maps=('den1','den2'), id=ID.den_map_loc)
+        MapLocation('Den', self.specials[3], 'map', loc_maps=('den1','den2'), id=ID.den_map_loc, hidden=0)
         MapLocation('Toxic Caves', self.specials[4], 'map', loc_maps=('tcaves1',), id=ID.tcaves_map_loc, hidden=0)
 
     def board_1(self):
@@ -923,6 +947,7 @@ class Board:
         self.load_map('den1')
         Arette(self.specials[1], 'den1')
         StJunien(self.specials[2], 'den1')
+        Sakara(self.specials[3], 'den1')
         self.doors[1].type = Type.blocking
 
     def board_den2(self):
@@ -937,6 +962,7 @@ class Board:
     def board_tcaves1(self):
         self.load_map('tcaves1')
         e = Portal(self.specials[1], board_map='tcaves1')
+        Banoja(self.specials[2], 'tcaves1')
         g = Gecko(self.random_empty(), 'tcaves1')
         l = g.loc
         lst = [g]
@@ -964,20 +990,13 @@ class Board:
                 fill_loc = set(o.loc for o in fill)
                 bld_loc = set(o.loc for o in bld)
                 # print("bld", bld)
-                debug("Misc.player.loc", Misc.player.loc)
-                debug("fill_loc", fill_loc)
-                debug("bld_loc", bld_loc)
                 door_loc = set([door])
                 if Misc.player and Misc.player.loc not in fill_loc|bld_loc|door_loc:
-                    debug('player not in building, filling...')
                     for obj in fill:
                         blt_put_obj(obj, do_refresh=0)
                         all_fill.add(tuple(obj.loc))
                         if initial:
                             refresh()
-                else:
-                    debug('player IN building')
-                debug('')
 
         for y, row in enumerate(self.B):
             for x, cell in enumerate(row):
@@ -1720,6 +1739,17 @@ class Being(BeingItemBase):
                 self.inv[ID.broken_radio] -= 1
                 Objects.metzger.state = 1
 
+        elif is_near('sakara'):
+            if Objects.sakara.state==0:
+                self.talk(Objects.sakara)
+                Objects.tcaves_map_loc.hidden = False
+            else:
+                self.talk(Objects.sakara, ID.sakara2)
+
+        elif is_near('banoja'):
+            self.talk(Objects.banoja)
+            Objects.sakara.state = 1
+
         elif is_near('vic') and Objects.vic.state==1:
             self.talk(Objects.vic, ID.vic2)
             self.party.append(ID.vic)
@@ -2114,6 +2144,10 @@ class Lignac(NPC):
     id = ID.lignac
     char = Blocks.npc2
 
+class Banoja(NPC):
+    id = ID.banoja
+    char = Blocks.npc2
+
 class Leblanc(NPC):
     # Metzger's guard
     id = ID.leblanc
@@ -2124,6 +2158,10 @@ class Leblanc(NPC):
 class Vic(NPC):
     id = ID.vic
     char = Blocks.npc2
+
+class Sakara(NPC):
+    id = ID.sakara
+    char = Blocks.woman
 
 class StJunien(NPC):
     markup = 0
@@ -2146,7 +2184,7 @@ class Banize(NPC):
 class Chim(NPC):
     speed = 4
     id = ID.chim
-    char = Blocks.banize
+    char = Blocks.npc2
     markup = 0.1
     caps = 300
 
