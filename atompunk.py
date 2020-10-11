@@ -291,6 +291,12 @@ conv_str = {
         2: 'What? Who?',
         3: 'With the geckos around.. you know..',
         4: "Ahh, I see. You've come here to help me. I appreciate it, but the geckos won't harm me.",
+        5: "Do you know that they understand the new world better, closer than we do?",
+        6: "I did not know that. You're talking about geckos, is that right?",
+        7: "Yes",
+        8: "So is that why you're staying here, to observe.",
+        9: "I don't need to observe.",
+        10: "I just.. <pause> every time I walk in the wastes, I just see it.",
     }
 
 }
@@ -300,7 +306,8 @@ conversations = {
     ID.player: [1],
     ID.sakara: [1,2,3],
     ID.sakara2: [1,2],
-    ID.banoja: [1,2,3,4],
+    ID.banoja: list(range(1,11)),
+
     ID.lignac: list(range(1,11)),
     ID.metzger: list(range(1,11)),
     ID.metzger2: list(range(1,5)) + [[5,6]],
@@ -371,11 +378,7 @@ class Talk:
     def talk(self):
         try:
             self.last_conv = conv = self.current[self.ind]
-            print("conv", conv)
         except Exception as e:
-            print("self.current", self.current)
-            print("self.ind", self.ind)
-            print('talk 1')
             return self.current[-1]
 
         if self.disabled and isinstance(conv, SEQ_TYPES):
@@ -389,7 +392,6 @@ class Talk:
             self.choice_stack.append(conv)
             i = self.choose(conv)
             if i is None:
-                print('talk 2')
                 return
             self.current = ch = conv[i-1]
             if isinstance(ch, int):
@@ -398,7 +400,6 @@ class Talk:
         else:
             rv = self.display(self.conv_str[conv])
             if not rv:
-                print('talk 3')
                 return
             self.ind += 1
         rv = self.talk()
@@ -1317,6 +1318,7 @@ class PartyMixin:
         return list(u for u in filter(None, self.party or []) if Objects[u].alive)
 
     def party_move(self, player, enemies):
+        enemies = [e for e in enemies if e.alive]
         B = self.B
         e = self.closest(enemies) if enemies else None
         if e and (Misc.combat or dist(self, e) <= 6):
@@ -2390,8 +2392,10 @@ def main(load_game):
     ok=1
     board_setup()
     # player = Misc.player = Player(Boards.b_1.specials[1], board_map='1', id=ID.player)
-    player = Misc.player = Player(Boards.b_den2.specials[1].mod_l(2), board_map='tcaves1', id=ID.player)
-    Banize(Boards.b_1.specials[1].mod_r(10), board_map='1')
+    p_loc, p_map = Boards.b_den2.specials[1].mod_l(2), 'tcaves1'
+    player = Misc.player = Player(p_loc, board_map=p_map, id=ID.player)
+    Banize(p_loc.mod_r(8), board_map=p_map)
+
     Chim(Boards.b_1.specials[1].mod_r(5), board_map='1')
     Misc.B.draw(initial=1)
     Misc.B.groups.append(Group(Misc.B, [player.id]+player.party))
