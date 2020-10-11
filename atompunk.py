@@ -142,6 +142,8 @@ class ID(Enum):
     den_map_loc = auto()
     tcaves_map_loc = auto()
 
+class Ability(Enum):
+    skin_geckos = auto()
 
 class Type(Enum):
     door = auto()
@@ -473,6 +475,7 @@ class Blocks:
     hit1 = '~'
     hit2 = '\u2735'
     stimpack = '\u244c'
+    hide = '\u007e'
 
     entrance = '\u0239'
 
@@ -1197,7 +1200,15 @@ class BeingItemBase:
 
     @property
     def name(self):
-        return self._name or self.__class__.__name__
+        if self._name:
+            return self._name
+        chars = self.__class__.__name__
+        n=chars[0]
+        for c in chars[1:]:
+            if c.isupper():
+                n+=' '
+            n += c
+        return n
 
     def tele(self, loc):
         self.B.remove(self)
@@ -1318,7 +1329,8 @@ class PartyMixin:
         return list(u for u in filter(None, self.party or []) if Objects[u].alive)
 
     def party_move(self, player, enemies):
-        enemies = [e for e in enemies if e.alive]
+        if enemies:
+            enemies = [e for e in enemies if e.alive]
         B = self.B
         e = self.closest(enemies) if enemies else None
         if e and (Misc.combat or dist(self, e) <= 6):
@@ -1682,11 +1694,17 @@ class Being(BeingItemBase):
         else:
             status(f'{self} fails to hit {obj}{descr}')
 
+        killed = False
         if c <= 0:
             status(f'{obj} dies')
             obj.hp = 0
+            killed = True
         else:
             obj.hp = c
+
+        if killed and self.is_player and isinstance(obj, Gecko) and Ability.skin_geckos in self.abilities:
+            self.B.remove(obj)
+            GeckoHide(board_map=self.B._map, loc=obj.loc)
 
     def defend(self, dmg, type):
         x = 0
@@ -1747,6 +1765,7 @@ class Being(BeingItemBase):
                 Objects.tcaves_map_loc.hidden = False
             else:
                 self.talk(Objects.sakara, ID.sakara2)
+                self.abilities.add(Ability.skin_geckos)
 
         elif is_near('banoja'):
             self.talk(Objects.banoja)
@@ -1888,18 +1907,6 @@ class Weapon(Item):
         Objects[self.type] = self
 
 
-    @property
-    def name(self):
-        if self._name:
-            return self._name
-        chars = self.__class__.__name__
-        n=chars[0]
-        for c in chars[1:]:
-            if c.isupper():
-                n+=' '
-            n += c
-        return n
-
 class Spear(Weapon):
     dmg = 3,10
     min_st = 4
@@ -1992,6 +1999,10 @@ class Stimpack(Item):
     type = Type.stimpack
     _cost = 175
 
+class GeckoHide(Item):
+    _cost = 10
+    char = Blocks.hide
+
 class FMJ223(Ammo):
     _name = '.223 FMJ (50)'
     value = 200
@@ -2082,6 +2093,7 @@ class Player(PartyMixin, XPLevelMixin, Being):
     hp = 40
     caps = 1200
     travel_loc = None
+    abilities = set([Ability.skin_geckos])
 
     def __init__(self, *args, player=None, party=None, spells=None, **kwargs ):
         super().__init__(*args, **kwargs)
