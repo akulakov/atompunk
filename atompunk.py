@@ -1690,13 +1690,13 @@ class Being(BeingItemBase):
         if descr:
             descr = f' with {descr}'
         if a:
-            status(f'{self} hits {obj}{descr} for {a} HP')
+            status(f'{self.name} hits {obj.name}{descr} for {a} HP')
         else:
-            status(f'{self} fails to hit {obj}{descr}')
+            status(f'{self.name} fails to hit {obj.name}{descr}')
 
         killed = False
         if c <= 0:
-            status(f'{obj} dies')
+            status(f'{obj.name} dies')
             obj.hp = 0
             killed = True
         else:
@@ -2093,6 +2093,7 @@ class Player(PartyMixin, XPLevelMixin, Being):
     hp = 40
     caps = 1200
     travel_loc = None
+    _name = 'You'
     abilities = set([Ability.skin_geckos])
 
     def __init__(self, *args, player=None, party=None, spells=None, **kwargs ):
