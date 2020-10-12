@@ -1044,6 +1044,10 @@ class Board:
     def neighbours_obj(self, loc):
         return filter(None, [self.get_obj(l) for l in self.neighbours(loc)])
 
+    def neighbours_alive(self, loc):
+        l = self.neighbours_obj(loc)
+        return [o for o in l if o.alive]
+
     def put(self, obj, loc=None):
         """
         If loc is not given, try to use obj's own location attr.
@@ -1178,6 +1182,7 @@ class BeingItemBase:
     _str = None
     id = None
     type = None
+    alive = False
 
     def __init__(self, char=None, name=None, loc=None, board_map=None, put=True, id=None, type=None, color=None, n=0):
         self._name, self.loc, self.board_map, self.color, self.n = \
@@ -1424,13 +1429,15 @@ class Being(BeingItemBase):
     healing_rate = 1
     critical_chance = 1
 
+    inv = None
+
     def __init__(self, loc=None, board_map=None, put=True, id=None, name=None, state=0, char='?',
                  color=None):
         self.loc, self.board_map, self._name, self.color = loc, board_map, name, color
         if state:
             self.state = state
         self.char = self.char or char
-        self.inv = defaultdict(int)
+        self.inv = self.inv or defaultdict(int)
         self.cur_move = self.speed
         if id:
             self.id = id
@@ -1872,6 +1879,9 @@ class Being(BeingItemBase):
     def neighbours_obj(self):
         return filter(None, [self.B.get_obj(l) for l in self.B.neighbours(self.loc)])
 
+    def neighbours_alive(self):
+        return self.B.neighbours_alive(self.loc)
+
     @property
     def alive(self):
         return self.hp>0
@@ -2177,6 +2187,7 @@ class Vic(NPC):
 class Sakara(NPC):
     id = ID.sakara
     char = Blocks.woman
+    inv = {Type.stimpack: 2,}
 
 class StJunien(NPC):
     markup = 0
@@ -2206,6 +2217,56 @@ class Chim(NPC):
 class IndependentParty(Player):
     pass
 
+class StealUI:
+    def __init__(self, player):
+        self.player = player
+
+    def steal(self):
+        tgt = first(self.player.neighbours_alive())
+        if not tgt:
+            status("There's nobody around to steal from!")
+            return
+        i = 0
+        B = self.player.B
+        B.draw()
+        inv = self.player.inv
+        tgt_inv = tgt.inv
+        debug(tgt)
+        debug(tgt.inv)
+
+        if not any(tgt_inv.values()):
+            status(f"{tgt.name} doesn't have anything!")
+            return
+
+        while 1:
+            stats(self)
+            blt.clear_area(5,5,60,10)
+
+            puts(5, 8 + i, Blocks.circle3)
+
+            x = y = 8
+            items = [(type, q, Objects[type]) for type,q in tgt_inv.items()]
+            ln = len(items)
+            for n, (_,qty,obj) in enumerate(items):
+                puts(7, y+n, f'{obj.name:30} {qty:-2}')
+            puts(7, y+n+1, 'STEAL')
+
+            refresh()
+            k = get_and_parse_key()
+            if k in ('q', 'ESCAPE'):
+                return
+            elif k == 'UP':
+                i-=1
+                if i<0: i = ln
+            elif k == 'DOWN':
+                i+=1
+                if i>ln: i = 0
+
+            # BUYBACK
+            elif k == 'ENTER':
+                id, qty, obj = items[i]
+                inv[id] += 1
+                tgt_inv[id] -= 1
 
 class ShopUI:
 
@@ -2376,7 +2437,7 @@ def board_setup():
     ]
     # Misc.B = Boards.b_1
     # Misc.B = Boards.b_3
-    Misc.B = Boards.b_tcaves1
+    Misc.B = Boards.b_den1
 
 def init_items():
     Pistol223()
@@ -2405,7 +2466,7 @@ def main(load_game):
     ok=1
     board_setup()
     # player = Misc.player = Player(Boards.b_1.specials[1], board_map='1', id=ID.player)
-    p_loc, p_map = Boards.b_den2.specials[1].mod_l(2), 'tcaves1'
+    p_loc, p_map = Boards.b_den1.specials[1].mod_l(2), 'den1'
     player = Misc.player = Player(p_loc, board_map=p_map, id=ID.player)
     Banize(p_loc.mod_r(8), board_map=p_map)
 
@@ -2619,6 +2680,11 @@ def handle_ui(unit, battle=False):
             if item and n:
                 txt.append(f'{item.name} {n}')
         B.display(txt)
+
+    elif k == 'g':
+        k = get_and_parse_key()
+        if k == 's':
+            StealUI(Misc.player).steal()
 
     Misc.B.draw(battle = (not unit.is_player))
     return 1
