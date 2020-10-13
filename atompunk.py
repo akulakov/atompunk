@@ -113,6 +113,20 @@ class ObjectsClass:
 
 Objects = ObjectsClass()
 
+class RelationAttitude:
+    """Good or bad relationship attitude between pairs of characters."""
+    def __init__(self):
+        self.att = defaultdict(lambda:20)
+
+    def mod(self, a, b, val):
+        self.att[(a,b)] += val
+        self.att[(b,a)] += val
+
+    def __getitem__(self, tup):
+        return self.att[tup]
+relation_attitude = RelationAttitude()
+
+
 class ID(Enum):
     player = auto()
     elder = auto()
@@ -1447,7 +1461,7 @@ class Being(BeingItemBase):
             self.B.put(self)
         self.max_hp = self.hp
         self.path = {}
-        self.skills = defaultdict(int)
+        self.skills = self.skills or defaultdict(int)
         self.traits = []
         self.equipped = [None, None]
 
@@ -2105,6 +2119,7 @@ class Player(PartyMixin, XPLevelMixin, Being):
     travel_loc = None
     _name = 'You'
     abilities = set([Ability.skin_geckos])
+    reputation = 100
 
     def __init__(self, *args, player=None, party=None, spells=None, **kwargs ):
         super().__init__(*args, **kwargs)
@@ -2116,6 +2131,7 @@ class Player(PartyMixin, XPLevelMixin, Being):
         self.inv[Type.stimpack] = 2
         self.inv[Type.mm10] = 20
         self.skills[Skills.outdoorsman] = 50
+        self.skills[Skills.steal] = 30
 
     def __str__(self):
         return super().__str__()
@@ -2226,6 +2242,12 @@ class StealUI:
         if not tgt:
             status("There's nobody around to steal from!")
             return
+
+        if self.skills[Skills.steal] < random()*100:
+            status('You fail to steal anything')
+            if self.skills[Skills.steal] < random()*100 and random()>0.8:
+                relation_attitude[(self,tgt)] -= 10
+                status('{tgt.name} seems angrier')
         i = 0
         B = self.player.B
         B.draw()
