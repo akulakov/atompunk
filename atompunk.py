@@ -172,6 +172,7 @@ class Type(Enum):
     ranged_attack = auto()
     healing_powder = auto()
     stimpack = auto()
+    guns_and_ammo_magazine = auto()
 
     knife = auto()
     pistol223 = auto()
@@ -1306,6 +1307,12 @@ class Item(BeingItemBase):
             self.loc = new
             self.B.put(self)
 
+class Manual(Item):
+    pass
+
+class GunsAndAmmoMagazine(Manual):
+    type = Type.guns_and_ammo_magazine
+    mod = Skills.small_guns, 5
 
 class Portal(BeingItemBase):
     def __init__(self, *args, **kwargs):
@@ -1444,6 +1451,7 @@ class Being(BeingItemBase):
     critical_chance = 1
 
     inv = None
+    skills = None
 
     def __init__(self, loc=None, board_map=None, put=True, id=None, name=None, state=0, char='?',
                  color=None):
@@ -1867,6 +1875,13 @@ class Being(BeingItemBase):
             self.remove1(item_id)
             status('You feel better')
 
+        if isinstance(obj, Manual):
+            skl, val = obj.mod
+            self.skills[skl] = min(150, self.skills[skl]+val)
+            self.inv[obj.type] -= 1
+            skl = str(skl.name).replace('_',' ')
+            status(f"{skl} skill increased")
+
         eq = self.equipped
         if equip:
             if isinstance(obj, Weapon):
@@ -2130,6 +2145,7 @@ class Player(PartyMixin, XPLevelMixin, Being):
         self.inv[Type.spear] = 1
         self.inv[Type.stimpack] = 2
         self.inv[Type.mm10] = 20
+        self.inv[Type.guns_and_ammo_magazine] = 2
         self.skills[Skills.outdoorsman] = 50
         self.skills[Skills.steal] = 30
 
@@ -2471,6 +2487,7 @@ def init_items():
     Stimpack()
     Spear()
     BrokenRadio()
+    GunsAndAmmoMagazine()
 
 def main(load_game):
     blt.open()
