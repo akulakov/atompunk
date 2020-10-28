@@ -15,14 +15,8 @@ from enum import Enum, auto
 
 """
 Atom Punk
-* Vic conv, fix radio
+- fix ai ranged attack
 
-rnd enc
-- empty map
-- when moving, rnd chance of encounter
-- based on outdoorsmanship, chance of evading 1-10, 10=90%
-- load map, rand place party in one spot, spread out geckos in another
-- add geckos
 """
 
 HEIGHT = 16
@@ -36,6 +30,7 @@ SEQ_TYPES = (list, tuple)
 debug_log = open('debug', 'w')
 board_grid = []
 
+# {{{
 keymap = dict(
     [
     [ blt.TK_ESCAPE, 'ESCAPE' ],
@@ -94,6 +89,7 @@ keymap = dict(
     [ blt.TK_SLASH, '/' ],
     ]
     )
+#}}}
 
 class ObjectsClass:
     def __init__(self):
@@ -185,6 +181,7 @@ class Type(Enum):
     mm10 = auto()
 
 
+# {{{
 conv_str = {
     ID.elder:
     {
@@ -353,6 +350,7 @@ conversations = {
             ],
         ],
     }
+# }}}
 
 
 class Talk:
@@ -1485,7 +1483,11 @@ class Being(BeingItemBase):
         tgt = self.closest(objs)
         if tgt:
             self.color = 'lighter blue'
+            wpn = self.equipped_obj()
+            _dist = dist(self, tgt)
             if tgt.loc in self.neighbours():
+                self.attack(tgt)
+            elif wpn and wpn.is_ranged and _dist <= wpn.range:
                 self.attack(tgt)
             else:
                 next_loc = self.B.next_move_to(self, tgt)
@@ -1656,11 +1658,14 @@ class Being(BeingItemBase):
                 status(f'{self} equipped {it}')
         self.attack(obj)
 
-    def attack(self, obj, melee=False):
+    def equipped_obj(self):
         eqp = self.equipped[0]
-        wpn = None
         if eqp:
-            wpn = Objects[eqp]
+            return Objects[eqp]
+
+    def attack(self, obj, melee=False):
+        wpn = self.equipped_obj()
+        if wpn:
             req_ap = wpn.hit_aimed_burst_pts[0]
         if wpn and req_ap > self.cur_move:
             wpn = None
@@ -1940,6 +1945,7 @@ class Weapon(Item):
     weight = None
     value_pound = None
     hit_aimed_burst_pts = None
+    is_ranged = False
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1958,6 +1964,7 @@ class Spear(Weapon):
 class RangedWeapon(Weapon):
     range = None
     loaded = 0
+    is_ranged = True
 
     def select_target(self, B):
         x=None
@@ -2006,13 +2013,13 @@ class RangedWeapon(Weapon):
         sleep(0.1)
         blt_put_obj(tgt, loc)
 
-    def reload(self, player):
-        ammo = player.inv.get(self.ammo.type)
+    def reload(self, being):
+        ammo = being.inv.get(self.ammo.type)
         if ammo:
             need = self.magazine_size - self.loaded
             qty = min(need, ammo)
             self.loaded += qty
-            player.remove1(self.ammo.type, qty)
+            being.remove1(self.ammo.type, qty)
             status(f'Reloaded {self}')
 
 
@@ -2122,6 +2129,12 @@ class Gecko(Monster):
     hp = 2
     strength = 3
 
+class ShootingPlant(Monster):
+    speed = 0
+    char = Blocks.gecko
+    hp = 5
+    strength = 3
+
 class Player(PartyMixin, XPLevelMixin, Being):
     speed = 5
     id = ID.player
@@ -2189,6 +2202,7 @@ class Aykin(NPC):
 class Arette(NPC):
     id = ID.arette
     char = Blocks.npc2
+    equipped = [Type.pipe_rifle]
 
 #--
 class Metzger(NPC):
@@ -2512,6 +2526,10 @@ def main(load_game):
     Chim(Boards.b_1.specials[1].mod_r(5), board_map='1')
     Misc.B.draw(initial=1)
     Misc.B.groups.append(Group(Misc.B, [player.id]+player.party))
+    ag = Group(Misc.B, [Objects.arette])
+    ag.enemies = [player]
+    Misc.B.groups.append(ag)
+    Misc.combat = 1
 
     while ok:
         while 1:
